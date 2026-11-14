@@ -43,3 +43,23 @@ First launch needs network access. Existing Host downloads are not updated impli
 Register `views/view-track.js` from `view.track.zip` as `view-track` in your Project's `ui.views`. Use an explicitly tagged release URL with the `#views/view-track.js` selector. Retain `LICENSE` with the View. See [the wiki](docs/index.md) and local `gams.json` for the supporting Unit pins.
 
 The assembled module keeps absolute Host imports at top level. Helpers remain independently testable native modules; do not introduce relative imports in the View entry because the Host loads Views through blob URLs.
+
+## Release
+
+Run `make test validate-docs docs package` before preparing a release. The numeric
+`vX.Y.Z` tag supplies the release version; no source version field is required.
+
+| Release asset | Contents |
+| --- | --- |
+| `view.track.zip` | `views/view-track.js`, `LICENSE`, `README.md` |
+| `SHA256SUMS` | SHA-256 checksum of the ZIP |
+
+Pushing a numeric version tag builds these assets from the tagged commit and
+publishes them with generated notes using GitHub CLI. Existing releases are not
+overwritten. `make package` only builds local files; it never tags or publishes.
+
+The separate `release` branch workflow runs native tests, validates docs and
+publishes the wiki, independently of version tags. Configure GitHub Pages to use
+GitHub Actions and allow the `release` branch in the `github-pages` environment.
+The GAMS documentation loads this wiki as its `view-track` subwiki from
+`https://kkgams.github.io/view.track/`; no documentation is copied into the Host.
