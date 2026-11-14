@@ -238,7 +238,7 @@ test('segment color accepts mixed-case hex and null inheritance', () => {
 
 function colorSegment(model, index, color) {
     const id = `style-${index}`
-    model.styles.push({ id, name: `Style ${index}`, roadColor: color })
+    model.styles.push({ id, name: `Style ${index}`, roadColor: color, roadWidth: 24 })
     model.segments[index].styleId = id
 }
 

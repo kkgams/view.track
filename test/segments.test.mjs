@@ -191,7 +191,7 @@ test('handle placement follows grid snapping and document bounds', () => {
 
 test('style assignments and reset are isolated, undoable and leave geometry unchanged', () => {
     const initial = blueprint()
-    initial.styles.push({ id: 'asphalt', name: 'Asphalt', roadColor: '#123456' })
+    initial.styles.push({ id: 'asphalt', name: 'Asphalt', roadColor: '#123456', roadWidth: 24 })
     const id = initial.segments[0].id
     const history = new TrackHistory(initial)
     const colored = setTrackSegmentStyle(initial, id, 'asphalt')
@@ -214,7 +214,7 @@ test('segment style survives movement, shape changes, handle reset and splitting
     for (const shape of ['curve', 'straight']) {
         let model = blueprint()
         const id = model.segments[0].id
-        model.styles.push({ id: 'asphalt', name: 'Asphalt', roadColor: '#123456' })
+        model.styles.push({ id: 'asphalt', name: 'Asphalt', roadColor: '#123456', roadWidth: 24 })
         model = setTrackSegmentStyle(model, id, 'asphalt')
         model = editTrackSegment(model, id, shape)
         model = resetTrackHandles(model, id)

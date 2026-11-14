@@ -57,6 +57,7 @@ export function validateBlueprint(value) {
         const name = style.name.toLowerCase()
         if (styleNames.has(name)) fail('style names must be unique')
         styleNames.add(name)
+        if (!Number.isFinite(style.roadWidth) || style.roadWidth < 1 || style.roadWidth > 200) fail('style road width (1–200)')
         if (typeof style.roadColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(style.roadColor)) fail('style road color (use #RRGGBB)')
     }
     if (!Array.isArray(value.segments)) fail('segments')

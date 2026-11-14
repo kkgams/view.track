@@ -114,16 +114,17 @@ export function addTrackStyle(model) {
     const names = new Set(model.styles.map(style => style.name.toLowerCase()))
     let number = 1
     while (names.has(`road style ${number}`)) number++
-    next.styles.push({ id: crypto.randomUUID(), name: `Road style ${number}`, roadColor: model.rendering.roadColor })
+    next.styles.push({ id: crypto.randomUUID(), name: `Road style ${number}`, roadColor: model.rendering.roadColor, roadWidth: model.rendering.roadWidth })
     return validateBlueprint(next)
 }
 
-export function updateTrackStyle(model, id, name, roadColor) {
+export function updateTrackStyle(model, id, name, roadColor, roadWidth) {
     const next = structuredClone(model)
     const style = next.styles.find(style => style.id === id)
     if (!style) throw new Error('Missing road style')
     style.name = name
     style.roadColor = roadColor
+    style.roadWidth = roadWidth
     return validateBlueprint(next)
 }
 

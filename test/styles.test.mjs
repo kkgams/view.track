@@ -8,7 +8,7 @@ function blueprint() {
     const model = createBlueprint()
     model.points = [{ id: 'a', x: 100, y: 100 }, { id: 'b', x: 500, y: 100 }, { id: 'c', x: 500, y: 500 }]
     syncTrackSegments(model)
-    model.styles = [{ id: 'asphalt', name: 'Asphalt', roadColor: '#123456' }]
+    model.styles = [{ id: 'asphalt', name: 'Asphalt', roadColor: '#123456', roadWidth: 24 }]
     return model
 }
 
@@ -24,7 +24,7 @@ test('styles start empty and new styles get independent IDs, unique names and th
     assert.equal(next.styles[1].roadColor, '#aabbcc')
     assert.notEqual(next.styles[0].id, next.styles[1].id)
     assert.deepEqual(first.styles, [next.styles[0]])
-    const renamed = updateTrackStyle(next, next.styles[0].id, 'road STYLE 3', '#123456')
+    const renamed = updateTrackStyle(next, next.styles[0].id, 'road STYLE 3', '#123456', 24)
     assert.equal(addTrackStyle(renamed).styles.at(-1).name, 'Road style 1')
 })
 
@@ -33,7 +33,7 @@ test('renaming and recoloring a shared style retain IDs and update every assigne
     model = setTrackSegmentStyle(model, model.segments[0].id, 'asphalt')
     model = setTrackSegmentStyle(model, model.segments[2].id, 'asphalt')
     const before = structuredClone(model)
-    const next = updateTrackStyle(model, 'asphalt', 'Dirt', '#aa5500')
+    const next = updateTrackStyle(model, 'asphalt', 'Dirt', '#aa5500', 24)
     assert.deepEqual(next.segments, before.segments)
     assert.deepEqual(next.points, before.points)
     assert.deepEqual(model, before)
@@ -62,7 +62,7 @@ test('style CRUD and assignment share the document undo history', () => {
     history.commit(addTrackStyle(history.model))
     const added = history.model.styles.at(-1)
     history.commit(setTrackSegmentStyle(history.model, history.model.segments[0].id, added.id))
-    history.commit(updateTrackStyle(history.model, added.id, 'Gravel', '#ff8844'))
+    history.commit(updateTrackStyle(history.model, added.id, 'Gravel', '#ff8844', 24))
     const edited = structuredClone(history.model)
     history.undo()
     assert.equal(history.model.styles.at(-1).name, added.name)
@@ -72,13 +72,13 @@ test('style CRUD and assignment share the document undo history', () => {
     assert.equal(history.model.styles.length, 1)
     history.redo(); history.redo(); history.redo()
     assert.deepEqual(history.model, edited)
-    assert.equal(history.commit(updateTrackStyle(edited, added.id, 'Gravel', '#ff8844')), false)
+    assert.equal(history.commit(updateTrackStyle(edited, added.id, 'Gravel', '#ff8844', 24)), false)
 })
 
 const invalid = [
     ['missing styles', model => { delete model.styles }],
     ['non-array styles', model => { model.styles = {} }],
-    ['too many styles', model => { model.styles = Array.from({ length: 257 }, (_, i) => ({ id: `style-${i}`, name: `Style ${i}`, roadColor: '#123456' })) }],
+    ['too many styles', model => { model.styles = Array.from({ length: 257 }, (_, i) => ({ id: `style-${i}`, name: `Style ${i}`, roadColor: '#123456', roadWidth: 24 })) }],
     ['null style', model => { model.styles = [null] }],
     ['missing style ID', model => { delete model.styles[0].id }],
     ['empty style ID', model => { model.styles[0].id = '' }],
@@ -100,13 +100,13 @@ for (const [label, mutate] of invalid) test(`style validation rejects ${label}`,
 
 test('style limits accept 256 definitions and malformed edits remain atomic', () => {
     const model = blueprint()
-    model.styles = Array.from({ length: 256 }, (_, i) => ({ id: `style-${i}`, name: `Style ${i}`, roadColor: '#123456' }))
+    model.styles = Array.from({ length: 256 }, (_, i) => ({ id: `style-${i}`, name: `Style ${i}`, roadColor: '#123456', roadWidth: 24 }))
     assert.deepEqual(validateBlueprint(model), model)
     const before = structuredClone(model)
     assert.throws(() => addTrackStyle(model), /maximum 256/)
-    assert.throws(() => updateTrackStyle(model, 'style-0', 'Style 1', '#123456'), /unique/)
-    assert.throws(() => updateTrackStyle(model, 'style-0', 'Name', 'red'), /style road color/)
-    assert.throws(() => updateTrackStyle(model, 'missing', 'Name', '#123456'), /Missing road style/)
+    assert.throws(() => updateTrackStyle(model, 'style-0', 'Style 1', '#123456', 24), /unique/)
+    assert.throws(() => updateTrackStyle(model, 'style-0', 'Name', 'red', 24), /style road color/)
+    assert.throws(() => updateTrackStyle(model, 'missing', 'Name', '#123456', 24), /Missing road style/)
     assert.throws(() => removeTrackStyle(model, 'missing'), /Missing road style/)
     assert.throws(() => setTrackSegmentStyle(model, model.segments[0].id, 'missing'), /Missing road style/)
     assert.deepEqual(model, before)

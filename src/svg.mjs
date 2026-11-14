@@ -1,5 +1,5 @@
 import { validateBlueprint } from './model.mjs'
-import { trackPath, trackSegments, segmentPath } from './geometry.mjs'
+import { trackPath, trackSegments, segmentPath, trackRoadWidths, trackRoadMesh, roadSurfacePath } from './geometry.mjs'
 
 export const SVG_NS = 'http://www.w3.org/2000/svg'
 export function escapeXml(text) {
@@ -10,28 +10,37 @@ export function renderTrack(model, id = 'track-centerline', simpleColor = '#263b
     const style = model.rendering
     const reference = escapeXml(id)
     const use = (color, width, dash = '') => `<use href="#${reference}" stroke="${color}" stroke-width="${width}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`
-    const edgeWidth = style.roadWidth + 2 * style.edgeWidth
-    // Whole-route strokes keep joins and markings continuous; only asphalt is overpainted.
+    const profiles = trackRoadWidths(model)
+    const roadWidth = profiles.length ? profiles[0].width : style.roadWidth
+    const edgeWidth = roadWidth + 2 * style.edgeWidth
+    // Keep the exact centerline for markings; vary only the generated road surface.
     const styles = new Map(model.styles.map(style => [style.id, style]))
     const colored = style.mode === 'road' ? trackSegments(model).filter(segment => model.segments[segment.index].styleId !== null) : []
     const closed = model.settings.closed && model.points.length > 2
+    const varying = style.mode === 'road' && profiles.some(profile => profile.width !== roadWidth)
+    const meshes = varying ? trackRoadMesh(model, profiles) : []
     const overrides = colored.map(segment => {
         const roadStyle = styles.get(model.segments[segment.index].styleId)
         if (!roadStyle) throw new Error('Missing road style')
         const color = roadStyle.roadColor
-        let markup = `<path d="${segmentPath(segment)}" stroke="${color}" stroke-width="${style.roadWidth}" stroke-linecap="butt"/>`
+        if (varying) {
+            const caps = { start: !closed && segment.index === 0, end: !closed && segment.index === model.segments.length - 1 }
+            return `<path d="${roadSurfacePath(meshes[segment.index], 0, caps)}" fill="${color}"/>`
+        }
+        let markup = `<path d="${segmentPath(segment)}" stroke="${color}" stroke-width="${roadWidth}" stroke-linecap="butt"/>`
         // Internal color boundaries are flat; only open-route ends need round caps.
         if (!closed) {
             for (const point of [...(segment.index === 0 ? [segment.a] : []), ...(segment.index === model.segments.length - 1 ? [segment.b] : [])]) {
-                markup += `<circle cx="${point.x}" cy="${point.y}" r="${style.roadWidth / 2}" fill="${color}" stroke="none"/>`
+                markup += `<circle cx="${point.x}" cy="${point.y}" r="${roadWidth / 2}" fill="${color}" stroke="none"/>`
             }
         }
         return markup
     })
+    const surface = (color, padding) => `<path d="${meshes.map(mesh => roadSurfacePath(mesh, padding)).join(' ')}" fill="${color}"/>`
     const layers = style.mode === 'centerline' ? [use(simpleColor, 12)] : [
-        use(style.outlineColor, edgeWidth + 2 * style.outlineWidth),
-        use(style.edgeColor, edgeWidth),
-        use(style.roadColor, style.roadWidth),
+        varying ? surface(style.outlineColor, style.edgeWidth + style.outlineWidth) : use(style.outlineColor, edgeWidth + 2 * style.outlineWidth),
+        varying ? surface(style.edgeColor, style.edgeWidth) : use(style.edgeColor, edgeWidth),
+        varying ? surface(style.roadColor, 0) : use(style.roadColor, roadWidth),
         ...overrides,
         ...(style.centerlineVisible ? [use(style.centerlineColor, 1.5, style.centerlineDash)] : []),
     ]

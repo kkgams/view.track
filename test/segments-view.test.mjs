@@ -25,7 +25,7 @@ function editor() {
     Object.assign(view, {
         history: new model.TrackHistory(value, { path: '', saved: JSON.stringify(value) }),
         selected: new Set(), selectedSegment: null, selectedStyle: null, drag: null, busy: false, preview: false,
-        tool: 'select', spacePressed: false, renders: 0,
+        tool: 'select', spacePressed: false, renders: 0, styleWidth: { value: '24' },
         render() { this.renders++ }, screenScale() { return 1 },
         canvasPoint(event) { return { x: event.clientX, y: event.clientY } },
     })
@@ -131,7 +131,7 @@ test('Insert splits a straight segment without turning it into curves', () => {
 
 test('segment style inspector assigns and resets, including in preview', () => {
     const view = editor()
-    view.history.model.styles.push({ id: 'asphalt', name: 'Asphalt', roadColor: '#AbCdEf' })
+    view.history.model.styles.push({ id: 'asphalt', name: 'Asphalt', roadColor: '#AbCdEf', roadWidth: 24 })
     view.selectedSegment = view.history.model.segments[0].id
     view.segmentStyle = { value: 'asphalt' }
     view.changeSegmentStyle()
@@ -149,7 +149,7 @@ test('segment style inspector assigns and resets, including in preview', () => {
 
 test('style table edits shared definitions and rejects invalid input atomically', () => {
     const view = editor()
-    view.history.model.styles.push({ id: 'asphalt', name: 'Asphalt', roadColor: '#123456' })
+    view.history.model.styles.push({ id: 'asphalt', name: 'Asphalt', roadColor: '#123456', roadWidth: 24 })
     let reports = 0
     const name = { value: 'Dirt', setCustomValidity() {}, reportValidity() { reports++ } }
     const color = { value: '#aa3300', setCustomValidity() {}, reportValidity() { reports++ } }
@@ -172,7 +172,7 @@ test('style table edits shared definitions and rejects invalid input atomically'
 
 test('style row selection is session-only and busy guards preserve selection', () => {
     const view = editor()
-    view.history.model.styles = [{ id: 'asphalt', name: 'Asphalt', roadColor: '#123456' }, { id: 'dirt', name: 'Dirt', roadColor: '#aa3300' }]
+    view.history.model.styles = [{ id: 'asphalt', name: 'Asphalt', roadColor: '#123456', roadWidth: 24 }, { id: 'dirt', name: 'Dirt', roadColor: '#aa3300', roadWidth: 24 }]
     const before = structuredClone(view.history.model)
     let focused = null
     view.styleEditors = new Map(view.history.model.styles.map(style => [style.id, { row: { focus() { focused = style.id } } }]))
@@ -190,7 +190,7 @@ test('style row selection is session-only and busy guards preserve selection', (
 
 test('style rows support arrow, Home/End and activation keys without intercepting delete buttons', () => {
     const view = editor()
-    view.history.model.styles = [{ id: 'asphalt', name: 'Asphalt', roadColor: '#123456' }, { id: 'dirt', name: 'Dirt', roadColor: '#aa3300' }]
+    view.history.model.styles = [{ id: 'asphalt', name: 'Asphalt', roadColor: '#123456', roadWidth: 24 }, { id: 'dirt', name: 'Dirt', roadColor: '#aa3300', roadWidth: 24 }]
     view.styleEditors = new Map(view.history.model.styles.map(style => [style.id, { row: { focus() {} } }]))
     const press = (id, key, button = false) => {
         let handled = false
@@ -245,4 +245,43 @@ test('properties do not edit without selection or while busy', () => {
     view.selectedStyle = 'missing'
     view.changeStyle(view.styleColor)
     assert.equal(view.history.past.length, 0)
+})
+
+test('style width property edits are undoable and invalid widths leave the model untouched', () => {
+    const view = editor()
+    view.history.model.styles = [{ id: 'wide', name: 'Wide road', roadColor: '#123456', roadWidth: 24 }]
+    view.selectedStyle = 'wide'
+    view.styleName = { value: 'Wide road' }
+    view.styleColor = { value: '#123456' }
+    let reports = 0
+    view.styleWidth = { value: '80', setCustomValidity() {}, reportValidity() { reports++ } }
+    view.changeStyle(view.styleWidth)
+    assert.equal(view.history.model.styles[0].roadWidth, 80)
+    assert.equal(view.history.past.length, 1)
+    view.styleWidth.value = '0'
+    view.changeStyle(view.styleWidth)
+    assert.equal(reports, 1)
+    assert.equal(view.history.model.styles[0].roadWidth, 80)
+    view.styleWidth.value = ''
+    view.changeStyle(view.styleWidth)
+    assert.equal(reports, 2)
+    assert.equal(view.history.past.length, 1)
+    view.undo()
+    assert.equal(view.history.model.styles[0].roadWidth, 24)
+})
+
+test('Fit track includes the widest assigned style with shoulders and outline', () => {
+    const view = editor()
+    view.history.model.styles = [{ id: 'wide', name: 'Wide road', roadColor: '#123456', roadWidth: 200 }]
+    view.history.model.segments[0].styleId = 'wide'
+    const model = view.history.model
+    const bounds = [...model.points, ...geometry.trackSegments(model).flatMap(segment => [segment.c, segment.d])]
+    const padding = 40 + 100 + model.rendering.edgeWidth + model.rendering.outlineWidth
+    view.zoomFit()
+    for (const point of bounds) {
+        assert.ok(view.camera.x <= point.x - padding + 1e-9)
+        assert.ok(view.camera.y <= point.y - padding + 1e-9)
+        assert.ok(view.camera.x + view.camera.width >= point.x + padding - 1e-9)
+        assert.ok(view.camera.y + view.camera.height >= point.y + padding - 1e-9)
+    }
 })

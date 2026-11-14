@@ -39,6 +39,7 @@ export class ViewTrack extends HTMLElement {
 <fieldset data-element="style-properties" disabled><legend>Style properties</legend>
 <label>Name <input data-element="style-name" type="text" maxlength="100" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
 <label>Road color <input data-element="style-color" type="text" maxlength="7" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
+<label>Road width <input data-element="style-width" type="number" min="1" max="200" step="any" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
 </fieldset>
 <fieldset><legend>Blueprint</legend><label>Name <input data-field="name" type="text" maxlength="1000" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
 <label><input data-field="closed" type="checkbox"> Closed loop</label>
@@ -84,8 +85,9 @@ export class ViewTrack extends HTMLElement {
         this.styleProperties = this.querySelector('[data-element="style-properties"]')
         this.styleName = this.querySelector('[data-element="style-name"]')
         this.styleColor = this.querySelector('[data-element="style-color"]')
+        this.styleWidth = this.querySelector('[data-element="style-width"]')
         this.stylePropertiesId = null
-        for (const field of [this.styleName, this.styleColor]) field.addEventListener('change', () => this.changeStyle(field), { signal: this.abort.signal })
+        for (const field of [this.styleName, this.styleColor, this.styleWidth]) field.addEventListener('change', () => this.changeStyle(field), { signal: this.abort.signal })
         this.styleRows.addEventListener('click', event => {
             if (this.busy || event.target.closest('button')) return
             const row = event.target.closest('tr[data-style-id]')
@@ -276,7 +278,7 @@ export class ViewTrack extends HTMLElement {
         if (this.busy || this.selectedStyle === null) return
         this.cancelDrag()
         try {
-            this.history.commit(updateTrackStyle(this.history.model, this.selectedStyle, this.styleName.value, this.styleColor.value))
+            this.history.commit(updateTrackStyle(this.history.model, this.selectedStyle, this.styleName.value, this.styleColor.value, this.styleWidth.value === '' ? NaN : Number(this.styleWidth.value)))
         } catch (error) {
             field.setCustomValidity(error.message)
             field.reportValidity()
@@ -346,7 +348,7 @@ export class ViewTrack extends HTMLElement {
         }
         const selected = model.styles.find(style => style.id === this.selectedStyle)
         this.styleProperties.disabled = this.busy || !selected
-        for (const [field, value] of [[this.styleName, selected ? selected.name : ''], [this.styleColor, selected ? selected.roadColor : '']]) {
+        for (const [field, value] of [[this.styleName, selected ? selected.name : ''], [this.styleColor, selected ? selected.roadColor : ''], [this.styleWidth, selected ? selected.roadWidth : '']]) {
             if (field !== document.activeElement || this.busy || this.stylePropertiesId !== this.selectedStyle) field.value = value
         }
         this.stylePropertiesId = this.selectedStyle
@@ -557,7 +559,8 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         const model = this.history.model
         const bounds = [...model.points, ...trackSegments(model).flatMap(segment => [segment.c, segment.d])]
         const style = model.rendering
-        const stroke = style.mode === 'road' ? style.roadWidth + 2 * (style.edgeWidth + style.outlineWidth) : 12
+        const width = trackRoadWidths(model).reduce((maximum, profile) => Math.max(maximum, profile.width), 0) || style.roadWidth
+        const stroke = style.mode === 'road' ? width + 2 * (style.edgeWidth + style.outlineWidth) : 12
         this.camera = fitTrackCamera(bounds, model.viewport, 40 + stroke / 2)
         this.render()
     }

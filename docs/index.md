@@ -66,7 +66,7 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 | Closed loop | Choose a closed circuit or open route |
 | Segment → Shape | Set the selected segment to Straight or Curved |
 | Road styles table → Add road style / select row | Create or select a named road style |
-| Style properties → Name / Road color | Edit the selected style |
+| Style properties → Name / Road color / Road width | Edit the selected style, including tapered width |
 | Segment → Road style | Choose a shared style, or Track default for the track-wide color |
 | Segment → handle coordinates, or drag a curve handle | Adjust the selected curve without changing neighboring segments |
 | Reset curve handles | Restore the selected segment’s automatic curve |
@@ -123,28 +123,45 @@ segment, not to either endpoint; there is no global curve toggle.
 ### Shared road styles
 
 The **Road styles** table is at the top of the sidebar. Press **Add road style**
-or select an existing row, then edit its name and six-digit hex color, such as
-`#a05a32`, in **Style properties** below the table. The table shows names, usage
-counts and delete buttons, not editable color cells. Up/Down, Home/End and
+or select an existing row, then edit its name, six-digit hex color (such as
+`#a05a32`) and road width in **Style properties** below the table. The table
+shows names, usage counts and delete buttons, not editable color cells. Up/Down, Home/End and
 Enter/Space select styles from the keyboard; selection does not dirty the document
 or enter undo history. The properties block is disabled when no styles exist.
-Choose that style
-in **Segment → Road style**. Editing a style updates every segment using it;
+Choose that style in **Segment → Road style**. Editing a style updates every segment using it;
 renaming it keeps its assignments intact because references use stable IDs.
 
-**Track default** uses **Road appearance → Road color**. New connections use
-Track default; styles are assigned explicitly. The **Used** column counts assigned
+**Track default** uses **Road appearance → Road color / Road width**. New style
+definitions copy the current track-wide color and width, then keep their own
+values. New connections use Track default; styles are assigned explicitly. The **Used** column counts assigned
 segments. Delete is disabled while a style is in use: change its segments to
 Track default or another style first. Clearing the track preserves its style
 definitions. Style creation, edits, assignment and deletion are undoable.
 
-Style colors appear in **Styled road** mode in the editor, preview and saved SVG.
+Style colors and widths appear in **Styled road** mode in the editor, preview and saved SVG.
 **Centerline only** retains style assignments without displaying asphalt. Styles
 and assignments may be edited in preview for an already selected segment.
 Shoulder, outline and center-marking colors remain track-wide. Styles currently
-contain only a name and road color; they do not assign physical behavior, bridge,
-tunnel or elevation properties. Names must be unique ignoring case, contain
+contain a name, road color and road width; they do not assign physical behavior,
+bridge, tunnel or elevation properties. Names must be unique ignoring case, contain
 1–100 characters with no surrounding spaces; a blueprint supports up to 256 styles.
+
+### Smooth width changes
+
+Set **Style properties → Road width** to 1–200 blueprint units; fractional widths
+are allowed. All segments using the style share that target width. The target is
+reached at each segment’s distance-along-road midpoint. At a connection, both
+segments use the average of their target widths. Width varies smoothly between
+these values, with zero width-change slope at midpoints and connections. Open
+ends keep their own segment’s target width; closed loops also taper across the
+last/first connection.
+
+Consecutive segments with the same target width remain that width at their
+shared connection. Shoulders and outlines keep their configured thickness per
+side while following the taper; center markings remain on the exact centerline.
+The same generated road surface is used in the editor, preview and saved SVG.
+**Fit track** includes the widest assigned road style. Changes to route topology
+recalculate the taper; inserting a point retains the style on both split segments.
 
 ### Curve handles
 
@@ -184,23 +201,25 @@ appearance while clean preview is enabled.
 
 | Setting | Meaning |
 | --- | --- |
-| Road width / color | Asphalt stroke width (1–200 units) and `#RRGGBB` color |
+| Road width / color | Default asphalt width (1–200 units) and `#RRGGBB` color |
 | Shoulder width / color | Added width on each side (0–50 units) and color |
 | Outline thickness / color | Added thickness outside each shoulder (0–50 units) and color |
 | Centerline marking / color | Show or hide the 1.5-unit center marking and choose its color |
 | Dash lengths | Space- or comma-separated lengths, such as `8 10`; empty means solid |
 
-The road uses one centerline path in SVG `<defs>`. Ordered `<use>` references
-paint the outline, shoulders, asphalt and optional center marking. Their widths
-are `road + 2×shoulder + 2×outline`, `road + 2×shoulder`, and `road` respectively.
-All layers update from the same geometry. Style-colored asphalt paints above
-the track asphalt and below the continuous center marking. Internal color
-boundaries use flat stroke ends; open routes retain rounded outer caps. Centerline-only mode uses a simple
-12-unit stroke instead, retaining the road settings when switching back.
+The road retains one exact centerline path in SVG `<defs>`. With uniform width,
+ordered `<use>` references paint outline, shoulders, asphalt and center marking.
+Their widths are `road + 2×shoulder + 2×outline`, `road + 2×shoulder`, and `road`.
+When assigned widths differ, sampled filled SVG ribbons paint those three road
+surfaces; their boundaries follow the smooth width profile. Sampling is for the
+road surface only, not the saved control points or centerline. Style-colored
+asphalt paints above the base asphalt and below the continuous center marking.
+Internal color boundaries remain flat and open ends retain rounded caps.
+Centerline-only mode uses a simple 12-unit stroke and retains style settings.
 
 Dash patterns accept up to 16 lengths from 0 to 1000, with at least one positive
-length. Colors accept six-digit hex values only. These are SVG strokes, not
-separate editable curves, offset road edges or meshes. Whole-path layering does
+length. Colors accept six-digit hex values only. Road surfaces are generated SVG
+geometry, not separately editable road edges or 3D meshes. Whole-path layering does
 not establish over/under ordering at crossings.
 
 ## Editable SVG format
@@ -217,7 +236,7 @@ into points. The format is `gams.track-blueprint`, schema version `1`.
 | `settings` | `closed`, `snap`, `grid`, `gridSize` |
 | `points` | Ordered `{id, x, y}` records; IDs remain stable when points move |
 | `segments` | Ordered `{id, from, to, shape, handles, styleId}` records matching route connections |
-| `styles` | Shared `{id, name, roadColor}` definitions with unique IDs and names |
+| `styles` | Shared `{id, name, roadColor, roadWidth}` definitions with unique IDs and names |
 | `annotations` | Reserved array for later design stages; empty in newly created V1 blueprints |
 | `rendering` | `mode`, `roadWidth`, `roadColor`, `edgeWidth`, `edgeColor`, `outlineWidth`, `outlineColor`, `centerlineVisible`, `centerlineColor`, `centerlineDash` |
 
@@ -227,7 +246,8 @@ routes with at least three points. `shape` is `straight` or `curve`. `handles`
 is `null` for automatic curves or `{start: {x, y}, end: {x, y}}` for manual
 endpoint-relative offsets. Manual handles remain stored while a segment is straight. `styleId` is `null`
 for Track default, or the ID of a style in `styles`. Missing or dangling references
-are invalid. Each style’s `roadColor` is a six-digit `#RRGGBB` value.
+are invalid. Each style’s `roadColor` is a six-digit `#RRGGBB` value and
+`roadWidth` is a finite number from 1 to 200.
 Malformed metadata is rejected before replacing the document.
 
 Unknown JSON fields on the document, points, segments, styles and annotations survive save/load
