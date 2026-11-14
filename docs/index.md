@@ -5,7 +5,47 @@ status: reference
 
 # Track blueprint editor
 
-A point-based SVG sketchbook for racing circuits, running inside GAMS.
+A point-based SVG sketchbook for racing circuits, running inside [GAMS](https://github.com/kkgams/gams).
+
+| Component | Source → ZIP entry | Screenshot | Original work |
+| --- | --- | --- | --- |
+| `view-track` | `src/views/view-track.js` + `src/{model,geometry,svg,interaction}.mjs` → `views/view-track.js` | Not available | kkgams |
+
+## Development
+
+Requires Make, Python 3, Node.js 24+, Git, curl, zip, unzip and shasum. No npm
+packages or sibling checkouts are needed.
+
+| Command | Result |
+| --- | --- |
+| `make build` | Assemble `build.nosync/views/view-track.js` |
+| `make test` | Native Node tests and assembled JavaScript syntax check |
+| `make package` | Incremental `build.nosync/view.track.zip` and `SHA256SUMS` |
+| `make open` | Build and launch this checkout's `gams.json` in pinned GAMS v3.1.1 |
+| `make serve-docs DOCS_PORT=8083` | Independent wiki preview |
+| `make docs` | Build `build.nosync/docs/` |
+| `make validate-docs` | Validate the wiki |
+| `make clean` | Remove `build.nosync/` and identified managed Host/notices; refuse supplied unmarked tools |
+
+Clean refuses unmarked supplied Host tools, tracked files and symlinks in deletion paths. Installed Units in
+`gams_modules/` and unrelated tools are preserved. Existing Host downloads are
+not updated implicitly; security checks are not bypassed. Accompanying Host
+notices remain under `tools/gams-release-notices/`.
+
+The ZIP contains the assembled View, README and Apache-2.0 license. Register
+`views/view-track.js` as `view-track` in `ui.views`. Pin a published release URL
+with `#views/view-track.js`; no release is required for local development.
+The Host loads Views through blob URLs, so assembly removes helper-relative
+imports while retaining absolute Host imports.
+
+The local `gams.json` pins filesystem/layout plugins v0.2.0, six UI Services
+v0.2.0, `view.files` v1.0.0 and `theme.gams` v1.0.2. File chooser Views select
+their entries from the existing `view.files-1.0.0.zip` release. The editor uses
+`fs/fs::read-text`, `fs/fs::write-text` and `ui.popup.open`, and registers through
+the Host's `/util/view-plugin.js`. Optional `data-source` selects an initial SVG.
+Host-dispatched open, save, saveAs, undo, redo, deleteSelected, clearSelection,
+zoomIn, zoomOut and zoomFit actions share the toolbar's operation guard. The
+standard tool_1 through tool_4 actions select Draw, Select, Insert and Pan.
 
 ## Sketch a circuit
 
@@ -120,42 +160,3 @@ V1 does not edit, validate or remap those future annotations when points are
 inserted or deleted. Elevation, structures and 3D handoff are not implemented.
 Files are limited to 8 MiB of SVG text and 10,000 points. Invalid data is rejected
 before replacing the current document; a failed save does not mark it as saved.
-
-## Develop and install
-
-Requires Make, Python 3, Node.js 24+, Git, curl, zip, unzip and shasum. No npm
-packages or sibling checkouts are needed.
-
-| Command | Result |
-| --- | --- |
-| `make build` | Assemble `build.nosync/views/view-track.js` |
-| `make test` | Native Node tests and assembled JavaScript syntax check |
-| `make package` | Incremental `build.nosync/view.track.zip` and `SHA256SUMS` |
-| `make open` | Build and launch this checkout's `gams.json` in pinned GAMS v3.1.1 |
-| `make serve-docs DOCS_PORT=8083` | Independent wiki preview |
-| `make docs` / `make validate-docs` | Build / validate the wiki |
-| `make clean` | Remove `build.nosync/`, downloaded Host and Host notices only |
-
-Clean refuses tracked files and symlinks in deletion paths. Installed Units in
-`gams_modules/` and unrelated tools are preserved. Existing Host downloads are
-not updated implicitly; security checks are not bypassed. Accompanying Host
-notices remain under `tools/gams-release-notices/`.
-
-| Component | Source → ZIP entry |
-| --- | --- |
-| `view-track` | `src/views/view-track.js` + `src/{model,geometry,svg,interaction}.mjs` → `views/view-track.js` |
-
-The ZIP contains the assembled View, README and Apache-2.0 license. Register
-`views/view-track.js` as `view-track` in `ui.views`. Pin a published release URL
-with `#views/view-track.js`; no release is required for local development.
-The Host loads Views through blob URLs, so assembly removes helper-relative
-imports while retaining absolute Host imports.
-
-The local `gams.json` pins filesystem/layout plugins v0.2.0, six UI Services
-v0.2.0, `view.files` v1.0.0 and `theme.gams` v1.0.2. File chooser Views select
-their entries from the existing `view.files-1.0.0.zip` release. The editor uses
-`fs/fs::read-text`, `fs/fs::write-text` and `ui.popup.open`, and registers through
-the Host's `/util/view-plugin.js`. Optional `data-source` selects an initial SVG.
-Host-dispatched open, save, saveAs, undo, redo, deleteSelected, clearSelection,
-zoomIn, zoomOut and zoomFit actions share the toolbar's operation guard. The
-standard tool_1 through tool_4 actions select Draw, Select, Insert and Pan.

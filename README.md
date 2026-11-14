@@ -1,65 +1,32 @@
 # Track blueprint editor
 
-An SVG track blueprint editor for [GAMS](https://github.com/kkgams/gams).
-Original work by [kkgams](https://github.com/kkgams), licensed under [Apache-2.0](LICENSE).
+An SVG racing-circuit blueprint editor for [GAMS](https://github.com/kkgams/gams).
+Draw, select, insert and move points; configure road appearance, grid and snapping;
+save editable SVGs with undo/redo and a clean preview.
 
-Use the grouped icon toolbar to Draw, Select, Insert or Pan. Shift-click or
-box-select points and drag them together. Wheel to pan, Ctrl/Cmd+wheel to zoom,
-or use the zoom/fit buttons. Toggle smooth/straight, closed/open, grid and snapping. Undo/redo,
-clean preview and GAMS save/load are included. Choose a simple centerline or a
-layered road with configurable asphalt, shoulders, outline and center markings.
-Appearance is undoable and saved with the blueprint. Saved SVGs embed versioned editor
-metadata and also work as ordinary images. No backend or frameworks are needed.
-
-```sh
-make open
-```
-
-| View | Source → ZIP entry |
-| --- | --- |
-| `view-track` | `src/views/view-track.js` + `src/*.mjs` → `views/view-track.js` |
-
-The Host supplies runtime APIs, shared widgets and theme styling. The local Project pins published filesystem/layout plugins, UI Services, file chooser Views and theme; no sibling checkout is required.
+| View | Source → ZIP entry | Screenshot | License | Original work |
+| --- | --- | --- | --- | --- |
+| Track editor (`view-track`) | `src/views/view-track.js` + `src/*.mjs` → `views/view-track.js` | Not available | [Apache-2.0](LICENSE) | [kkgams](https://github.com/kkgams) |
 
 ## Development
 
-Requires Make, Python 3, Node.js 24+, Git, curl, zip, unzip and shasum. No package installation is needed. Host launch currently supports macOS Apple Silicon.
+Requires Make, Python 3, Node.js 24+, Git, curl, zip, unzip and shasum. No package
+installation or sibling checkout is needed. Host launch supports macOS Apple
+Silicon and uses canonical local source with pinned released supporting Units.
 
 | Command | Purpose |
 | --- | --- |
-| `make build` | Assemble `build.nosync/views/view-track.js` |
-| `make test` | Run native Node tests and check assembled View syntax |
-| `make package` | Build incremental `build.nosync/view.track.zip` and `SHA256SUMS` |
-| `make open` | Build and open this checkout's `gams.json` in pinned GAMS v3.1.1 |
-| `make tools/gams.app` | Download the Host and preserve its accompanying notices |
-| `make serve-docs DOCS_PORT=8083` | Preview the pinned wiki independently |
-| `make docs` / `make validate-docs` | Build / validate the wiki |
-| `make clean` | Remove generated `build.nosync/`, `tools/gams.app` and `tools/gams-release-notices` only |
+| `make build` | Assemble `build.nosync/views/view-track.js`. |
+| `make test` | Run native Node tests and check assembled JavaScript syntax. |
+| `make package` | Build incremental `build.nosync/view.track.zip` and `SHA256SUMS`. |
+| `make open` | Build and open local `gams.json` in pinned GAMS v3.1.1. |
+| `make tools/gams.app` | Download the Host if absent, preserving accompanying notices. |
+| `make serve-docs DOCS_PORT=8083` | Preview the pinned wiki independently. |
+| `make docs` | Build `build.nosync/docs/`. |
+| `make validate-docs` | Validate documentation. |
+| `make clean` | Remove generated `build.nosync/` and identified managed Host/notices; refuse supplied unmarked tools, tracked files and symlinked deletion paths. |
 
-First launch needs network access. Existing Host downloads are not updated implicitly; macOS security checks remain intact. Clean refuses tracked files or symlinks within its deletion paths and preserves `gams_modules/` and unrelated tools. All build, documentation and temporary output lives under ignored `build.nosync/`.
-
-## Install
-
-Register `views/view-track.js` from `view.track.zip` as `view-track` in your Project's `ui.views`. Use an explicitly tagged release URL with the `#views/view-track.js` selector. Retain `LICENSE` with the View. See [the wiki](docs/index.md) and local `gams.json` for the supporting Unit pins.
-
-The assembled module keeps absolute Host imports at top level. Helpers remain independently testable native modules; do not introduce relative imports in the View entry because the Host loads Views through blob URLs.
-
-## Release
-
-Run `make test validate-docs docs package` before preparing a release. The numeric
-`vX.Y.Z` tag supplies the release version; no source version field is required.
-
-| Release asset | Contents |
-| --- | --- |
-| `view.track.zip` | `views/view-track.js`, `LICENSE`, `README.md` |
-| `SHA256SUMS` | SHA-256 checksum of the ZIP |
-
-Pushing a numeric version tag builds these assets from the tagged commit and
-publishes them with generated notes using GitHub CLI. Existing releases are not
-overwritten. `make package` only builds local files; it never tags or publishes.
-
-The separate `release` branch workflow runs native tests, validates docs and
-publishes the wiki, independently of version tags. Configure GitHub Pages to use
-GitHub Actions and allow the `release` branch in the `github-pages` environment.
-The GAMS documentation loads this wiki as its `view-track` subwiki from
-`https://kkgams.github.io/view.track/`; no documentation is copied into the Host.
+First launch needs network access. Existing Host downloads are never updated
+implicitly and security checks remain intact. Installed Units in `gams_modules/`
+and unrelated tools are preserved. Keep authored content outside `build.nosync/`.
+See [the wiki](docs/index.md) for editing controls, SVG format and installation.
