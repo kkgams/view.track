@@ -16,7 +16,7 @@ export class ViewTrack extends HTMLElement {
         this.controls = []
         this.centerlineId = `track-centerline-${crypto.randomUUID()}`
         this.resizeObserver = new ResizeObserver(entries => {
-            if (this.isConnected && entries.some(entry => entry.contentRect.width > 0 && entry.contentRect.height > 0)) this.render()
+            if (this.isConnected && entries.some(entry => entry.contentRect.width > 0 && entry.contentRect.height > 0)) this.renderViewport()
         })
     }
 
@@ -207,8 +207,8 @@ export class ViewTrack extends HTMLElement {
             for (let x = 0; x <= model.viewport.width; x += model.settings.gridSize) grid.push(`M ${x} 0 V ${model.viewport.height}`)
             for (let y = 0; y <= model.viewport.height; y += model.settings.gridSize) grid.push(`M 0 ${y} H ${model.viewport.width}`)
         }
-        this.svg.innerHTML = `<rect x="${camera.x}" y="${camera.y}" width="${camera.width}" height="${camera.height}" fill="${this.preview ? '#ffffff' : '#121c28'}"/>
-<rect width="${model.viewport.width}" height="${model.viewport.height}" fill="none" stroke="${this.preview ? '#ffffff' : '#344457'}" stroke-width="${1 / scale}"/>
+        this.svg.innerHTML = `<rect data-element="viewport-background" x="${camera.x}" y="${camera.y}" width="${camera.width}" height="${camera.height}" fill="${this.preview ? '#ffffff' : '#121c28'}"/>
+<rect data-element="document-boundary" width="${model.viewport.width}" height="${model.viewport.height}" fill="none" stroke="${this.preview ? '#ffffff' : '#344457'}" stroke-width="${1 / scale}"/>
 <path d="${grid.join(' ')}" stroke="#344457" stroke-width="1" fill="none" pointer-events="none"/>
 ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
 <g data-element="points"></g>`
@@ -223,12 +223,24 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         if (this.drag && this.drag.kind === 'box') {
             const { start, end } = this.drag
             const box = document.createElementNS(SVG_NS, 'rect')
+            box.dataset.element = 'selection-box'
             for (const [name, value] of Object.entries({ x: Math.min(start.x, end.x), y: Math.min(start.y, end.y),
                 width: Math.abs(start.x - end.x), height: Math.abs(start.y - end.y), fill: '#91e5ff', 'fill-opacity': 0.12,
                 stroke: '#91e5ff', 'stroke-width': 1.5 / scale, 'stroke-dasharray': `${4 / scale} ${4 / scale}`, 'pointer-events': 'none' })) box.setAttribute(name, value)
             this.svg.append(box)
         }
         this.updateControls()
+        this.updateStatus()
+    }
+
+    renderViewport() {
+        updateTrackViewport(this.svg, this.camera)
+        this.updateStatus()
+    }
+
+    updateStatus() {
+        const model = this.drag && this.drag.kind === 'move' ? this.drag.draft : this.history.model
+        const camera = this.camera
         const dirty = JSON.stringify(this.history.model) !== this.saved
         const hints = { draw: 'Click to add · Drag selected points to move', select: 'Click or drag a box to select · Shift adds/removes', insert: 'Click a segment to insert a point', pan: 'Drag to pan' }
         this.status.className = ''
@@ -261,9 +273,9 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
     }
 
     zoomAt(anchor, factor) {
-        this.cancelDrag()
+        if (this.drag) { this.cancelDrag(); this.render() }
         this.camera = zoomTrackCamera(this.camera, this.history.model.viewport, anchor, factor)
-        this.render()
+        this.renderViewport()
     }
     zoomIn() { this.zoomAt({ x: this.camera.x + this.camera.width / 2, y: this.camera.y + this.camera.height / 2 }, 1.2) }
     zoomOut() { this.zoomAt({ x: this.camera.x + this.camera.width / 2, y: this.camera.y + this.camera.height / 2 }, 0.8) }
@@ -282,12 +294,12 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         if (this.busy || this.drag) return
         const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.svg.getBoundingClientRect().height : 1
         if ((event.ctrlKey || event.metaKey) && event.deltaY !== 0) {
-            this.zoomAt(this.canvasPoint(event), event.deltaY < 0 ? 1.1 : 0.9)
+            this.zoomAt(this.canvasPoint(event), trackWheelZoomFactor(event.deltaY, event.deltaMode, this.svg.getBoundingClientRect().height))
         } else {
             const scale = this.screenScale()
             this.camera.x += event.deltaX * unit / scale
             this.camera.y += event.deltaY * unit / scale
-            this.render()
+            this.renderViewport()
         }
     }
 

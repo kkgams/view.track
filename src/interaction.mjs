@@ -20,6 +20,11 @@ export function moveTrackSelection(model, ids, delta) {
     return next
 }
 
+export function trackWheelZoomFactor(deltaY, deltaMode, pageHeight) {
+    const unit = deltaMode === 1 ? 16 : deltaMode === 2 ? pageHeight : 1
+    return Math.exp(-deltaY * unit * 0.002)
+}
+
 export function zoomTrackCamera(camera, viewport, anchor, factor) {
     const scale = viewport.width / camera.width
     const target = Math.max(0.02, Math.min(64, scale * factor))

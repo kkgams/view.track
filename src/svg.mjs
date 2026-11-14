@@ -20,6 +20,28 @@ export function renderTrack(model, id = 'track-centerline', simpleColor = '#263b
     return `<defs><path d="${trackPath(model)}" id="${reference}"/></defs>\n<g fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none">${layers.join('')}</g>`
 }
 
+// Camera-only updates keep the browser's wheel-gesture target mounted.
+export function updateTrackViewport(svg, camera) {
+    svg.setAttribute('viewBox', `${camera.x} ${camera.y} ${camera.width} ${camera.height}`)
+    const matrix = svg.getScreenCTM()
+    if (!matrix || matrix.a <= 0) throw new Error('Track SVG has no screen transform')
+    const scale = matrix.a
+    const background = svg.querySelector('[data-element="viewport-background"]')
+    const boundary = svg.querySelector('[data-element="document-boundary"]')
+    if (!background || !boundary) throw new Error('Track SVG is missing its viewport surfaces')
+    for (const [name, value] of Object.entries({ x: camera.x, y: camera.y, width: camera.width, height: camera.height })) background.setAttribute(name, value)
+    boundary.setAttribute('stroke-width', 1 / scale)
+    for (const point of svg.querySelectorAll('[data-element="points"] circle')) {
+        point.setAttribute('r', 9 / scale)
+        point.setAttribute('stroke-width', 3 / scale)
+    }
+    const box = svg.querySelector('[data-element="selection-box"]')
+    if (box) {
+        box.setAttribute('stroke-width', 1.5 / scale)
+        box.setAttribute('stroke-dasharray', `${4 / scale} ${4 / scale}`)
+    }
+}
+
 export function exportBlueprint(model) {
     const checked = validateBlueprint(model)
     const metadata = JSON.stringify(checked).replace(/[\u007f-\uffff]/g, character => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`)
