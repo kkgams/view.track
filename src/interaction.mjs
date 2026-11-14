@@ -1,4 +1,4 @@
-import { placePoint, syncTrackSegments } from './model.mjs'
+import { placePoint, syncTrackSegments, validateBlueprint } from './model.mjs'
 import { trackSegments } from './geometry.mjs'
 
 // Selection and camera state are session-only; neither changes the SVG document schema.
@@ -88,7 +88,7 @@ export function insertTrackPoint(model, index, point, t) {
     const left = next.segments[index], right = next.segments[index + 1]
     left.id = source.id
     left.shape = right.shape = source.shape
-    left.roadColor = right.roadColor = model.segments[index].roadColor
+    left.styleId = right.styleId = model.segments[index].styleId
     if (source.shape === 'curve') {
         const lerp = (a, b) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })
         const offset = (a, b) => ({ x: a.x - b.x, y: a.y - b.y })
@@ -100,11 +100,37 @@ export function insertTrackPoint(model, index, point, t) {
     return next
 }
 
-export function setTrackSegmentColor(model, id, color) {
-    if (color !== null && (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color))) throw new Error('Invalid segment road color: use #RRGGBB')
+export function setTrackSegmentStyle(model, id, styleId) {
+    if (styleId !== null && !model.styles.some(style => style.id === styleId)) throw new Error('Missing road style')
     const next = structuredClone(model)
     const segment = next.segments.find(segment => segment.id === id)
     if (!segment) throw new Error('Missing segment')
-    segment.roadColor = color
+    segment.styleId = styleId
+    return next
+}
+
+export function addTrackStyle(model) {
+    const next = structuredClone(model)
+    const names = new Set(model.styles.map(style => style.name.toLowerCase()))
+    let number = 1
+    while (names.has(`road style ${number}`)) number++
+    next.styles.push({ id: crypto.randomUUID(), name: `Road style ${number}`, roadColor: model.rendering.roadColor })
+    return validateBlueprint(next)
+}
+
+export function updateTrackStyle(model, id, name, roadColor) {
+    const next = structuredClone(model)
+    const style = next.styles.find(style => style.id === id)
+    if (!style) throw new Error('Missing road style')
+    style.name = name
+    style.roadColor = roadColor
+    return validateBlueprint(next)
+}
+
+export function removeTrackStyle(model, id) {
+    if (!model.styles.some(style => style.id === id)) throw new Error('Missing road style')
+    if (model.segments.some(segment => segment.styleId === id)) throw new Error('Road style is in use; change its segments to another style first')
+    const next = structuredClone(model)
+    next.styles = next.styles.filter(style => style.id !== id)
     return next
 }

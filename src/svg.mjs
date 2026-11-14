@@ -12,10 +12,13 @@ export function renderTrack(model, id = 'track-centerline', simpleColor = '#263b
     const use = (color, width, dash = '') => `<use href="#${reference}" stroke="${color}" stroke-width="${width}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`
     const edgeWidth = style.roadWidth + 2 * style.edgeWidth
     // Whole-route strokes keep joins and markings continuous; only asphalt is overpainted.
-    const colored = style.mode === 'road' ? trackSegments(model).filter(segment => model.segments[segment.index].roadColor !== null) : []
+    const styles = new Map(model.styles.map(style => [style.id, style]))
+    const colored = style.mode === 'road' ? trackSegments(model).filter(segment => model.segments[segment.index].styleId !== null) : []
     const closed = model.settings.closed && model.points.length > 2
     const overrides = colored.map(segment => {
-        const color = model.segments[segment.index].roadColor
+        const roadStyle = styles.get(model.segments[segment.index].styleId)
+        if (!roadStyle) throw new Error('Missing road style')
+        const color = roadStyle.roadColor
         let markup = `<path d="${segmentPath(segment)}" stroke="${color}" stroke-width="${style.roadWidth}" stroke-linecap="butt"/>`
         // Internal color boundaries are flat; only open-route ends need round caps.
         if (!closed) {

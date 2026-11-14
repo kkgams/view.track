@@ -129,33 +129,41 @@ test('Insert splits a straight segment without turning it into curves', () => {
     assert.deepEqual(model.validateBlueprint(view.history.model), view.history.model)
 })
 
-test('segment color inspector commits overrides and resets to track color, including in preview', () => {
+test('segment style inspector assigns and resets, including in preview', () => {
     const view = editor()
+    view.history.model.styles.push({ id: 'asphalt', name: 'Asphalt', roadColor: '#AbCdEf' })
     view.selectedSegment = view.history.model.segments[0].id
-    view.segmentColor = { value: '#AbCdEf' }
-    view.changeSegmentColor(false)
-    assert.equal(view.history.model.segments[0].roadColor, '#AbCdEf')
+    view.segmentStyle = { value: 'asphalt' }
+    view.changeSegmentStyle()
+    assert.equal(view.history.model.segments[0].styleId, 'asphalt')
     view.preview = true
-    view.changeSegmentColor(true)
-    assert.equal(view.history.model.segments[0].roadColor, null)
-    assert.equal(view.segmentColor.value, '')
+    view.segmentStyle.value = ''
+    view.changeSegmentStyle()
+    assert.equal(view.history.model.segments[0].styleId, null)
     view.undo()
-    assert.equal(view.history.model.segments[0].roadColor, '#AbCdEf')
+    assert.equal(view.history.model.segments[0].styleId, 'asphalt')
     view.busy = true
-    view.changeSegmentColor(true)
-    assert.equal(view.history.model.segments[0].roadColor, '#AbCdEf')
+    view.changeSegmentStyle()
+    assert.equal(view.history.model.segments[0].styleId, 'asphalt')
 })
 
-test('invalid color input reports validation without changing the document or history', () => {
+test('style table edits shared definitions and rejects invalid input atomically', () => {
     const view = editor()
-    view.selectedSegment = view.history.model.segments[0].id
+    view.history.model.styles.push({ id: 'asphalt', name: 'Asphalt', roadColor: '#123456' })
     let reports = 0
-    view.segmentColor = { value: 'red', setCustomValidity() {}, reportValidity() { reports++ } }
-    view.changeSegmentColor(false)
+    const name = { value: 'Dirt', setCustomValidity() {}, reportValidity() { reports++ } }
+    const color = { value: '#aa3300', setCustomValidity() {}, reportValidity() { reports++ } }
+    view.styleEditors = new Map([['asphalt', { name, color }]])
+    view.changeStyle('asphalt', name)
+    assert.equal(view.history.model.styles[0].name, 'Dirt')
+    assert.equal(view.history.model.styles[0].roadColor, '#aa3300')
+    color.value = 'red'
+    view.changeStyle('asphalt', color)
     assert.equal(reports, 1)
-    assert.equal(view.history.past.length, 0)
-    assert.equal(view.history.model.segments[0].roadColor, null)
-    view.segmentColor.value = ''
-    view.changeSegmentColor(false)
-    assert.equal(view.history.past.length, 0)
+    assert.equal(view.history.past.length, 1)
+    assert.equal(view.history.model.styles[0].roadColor, '#aa3300')
+    view.deleteStyle('asphalt')
+    assert.deepEqual(view.history.model.styles, [])
+    view.undo()
+    assert.equal(view.history.model.styles[0].name, 'Dirt')
 })

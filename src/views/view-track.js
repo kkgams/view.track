@@ -31,15 +31,17 @@ export class ViewTrack extends HTMLElement {
         this.style.display = 'contents'
         this.abort = new AbortController()
         this.innerHTML = `<svg xmlns="${SVG_NS}" width="100%" height="100%" viewBox="0 0 1200 800" tabindex="0" role="img" aria-label="Track editor. Draw points, select points or segments, insert points, or pan. Shift-click extends selection. Hold Space to pan."></svg>
-<aside><form autocomplete="off">
+<aside><fieldset><legend>Road styles</legend>
+<table class="compact-actions" aria-label="Road styles"><thead><tr><th scope="col">Name</th><th scope="col">Color</th><th scope="col">Used</th><th scope="col">Action</th></tr></thead><tbody data-element="road-styles"></tbody></table>
+<button type="button" data-element="add-style">Add road style</button>
+</fieldset><form autocomplete="off">
 <fieldset><legend>Blueprint</legend><label>Name <input data-field="name" type="text" maxlength="1000" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
 <label><input data-field="closed" type="checkbox"> Closed loop</label>
 </fieldset>
 <fieldset data-element="segment-inspector"><legend>Segment</legend>
 <label>Selected segment <select data-element="segment-picker" aria-label="Selected segment"></select></label>
 <label>Shape <select data-element="segment-shape"><option value="straight">Straight</option><option value="curve">Curved</option></select></label>
-<label>Road color (empty = track color) <input data-element="segment-color" type="text" maxlength="7" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
-<button type="button" data-element="reset-segment-color">Use track road color</button>
+<label>Road style <select data-element="segment-style"></select></label>
 <label>Start handle X <input data-handle="start" data-axis="x" type="number" step="any"></label>
 <label>Start handle Y <input data-handle="start" data-axis="y" type="number" step="any"></label>
 <label>End handle X <input data-handle="end" data-axis="x" type="number" step="any"></label>
@@ -72,8 +74,13 @@ export class ViewTrack extends HTMLElement {
         for (const field of this.fields) field.addEventListener('change', () => this.changeField(field), { signal: this.abort.signal })
         this.segmentPicker = this.querySelector('[data-element="segment-picker"]')
         this.segmentShape = this.querySelector('[data-element="segment-shape"]')
-        this.segmentColor = this.querySelector('[data-element="segment-color"]')
-        this.resetSegmentColor = this.querySelector('[data-element="reset-segment-color"]')
+        this.segmentStyle = this.querySelector('[data-element="segment-style"]')
+        this.styleRows = this.querySelector('[data-element="road-styles"]')
+        this.styleEditors = new Map()
+        this.styleChoices = null
+        this.segmentChoices = null
+        this.addStyleButton = this.querySelector('[data-element="add-style"]')
+        this.addStyleButton.addEventListener('click', () => this.addStyle(), { signal: this.abort.signal })
         this.handleFields = [...this.querySelectorAll('[data-handle]')]
         this.resetHandles = this.querySelector('[data-element="reset-handles"]')
         for (const field of this.handleFields) {
@@ -89,8 +96,7 @@ export class ViewTrack extends HTMLElement {
             this.render()
         }, { signal: this.abort.signal })
         this.segmentShape.addEventListener('change', () => this.changeSegment(false), { signal: this.abort.signal })
-        this.segmentColor.addEventListener('change', () => this.changeSegmentColor(false), { signal: this.abort.signal })
-        this.resetSegmentColor.addEventListener('click', () => this.changeSegmentColor(true), { signal: this.abort.signal })
+        this.segmentStyle.addEventListener('change', () => this.changeSegmentStyle(), { signal: this.abort.signal })
         this.resetHandles.addEventListener('click', () => this.changeSegment(true), { signal: this.abort.signal })
         this.mountControls()
         const listen = (type, method) => this.svg.addEventListener(type, event => this[method](event), { signal: this.abort.signal })
@@ -211,19 +217,108 @@ export class ViewTrack extends HTMLElement {
         this.render()
     }
 
-    changeSegmentColor(reset) {
+    changeSegmentStyle() {
         if (this.busy || !this.selectedSegment) return
         this.cancelDrag()
-        const color = reset || this.segmentColor.value === '' ? null : this.segmentColor.value
-        if (color !== null && !/^#[0-9a-f]{6}$/i.test(color)) {
-            this.segmentColor.setCustomValidity('Use #RRGGBB, or leave empty for the track color')
-            this.segmentColor.reportValidity()
-            this.segmentColor.setCustomValidity('')
+        this.history.commit(setTrackSegmentStyle(this.history.model, this.selectedSegment, this.segmentStyle.value || null))
+        this.render()
+    }
+
+    addStyle() {
+        if (this.busy) return
+        this.cancelDrag()
+        this.history.commit(addTrackStyle(this.history.model))
+        this.render()
+        const id = this.history.model.styles.at(-1).id
+        this.styleEditors.get(id).name.focus()
+    }
+
+    changeStyle(id, field) {
+        if (this.busy) return
+        this.cancelDrag()
+        const editors = this.styleEditors.get(id)
+        if (!editors) throw new Error('Missing style editor')
+        try {
+            this.history.commit(updateTrackStyle(this.history.model, id, editors.name.value, editors.color.value))
+        } catch (error) {
+            field.setCustomValidity(error.message)
+            field.reportValidity()
+            field.setCustomValidity('')
             return
         }
-        this.history.commit(setTrackSegmentColor(this.history.model, this.selectedSegment, color))
-        this.segmentColor.value = color === null ? '' : color
         this.render()
+    }
+
+    deleteStyle(id) {
+        if (this.busy) return
+        this.cancelDrag()
+        this.history.commit(removeTrackStyle(this.history.model, id))
+        this.render()
+    }
+
+    updateStyleControls(model) {
+        const ids = new Set(model.styles.map(style => style.id))
+        for (const [id, editors] of this.styleEditors) if (!ids.has(id)) {
+            editors.row.remove()
+            this.styleEditors.delete(id)
+        }
+        const usage = new Map()
+        for (const segment of model.segments) if (segment.styleId !== null) usage.set(segment.styleId, (usage.get(segment.styleId) || 0) + 1)
+        for (const [index, style] of model.styles.entries()) {
+            let editors = this.styleEditors.get(style.id)
+            if (!editors) {
+                const row = document.createElement('tr')
+                const input = (key, label, maxlength) => {
+                    const cell = document.createElement('td')
+                    const field = document.createElement('input')
+                    field.type = 'text'
+                    field.maxLength = maxlength
+                    field.size = key === 'color' ? 7 : 12
+                    field.setAttribute('aria-label', label)
+                    for (const attribute of ['autocomplete', 'autocorrect', 'autocapitalize']) field.setAttribute(attribute, 'off')
+                    field.spellcheck = false
+                    field.addEventListener('change', () => this.changeStyle(style.id, field), { signal: this.abort.signal })
+                    cell.append(field)
+                    row.append(cell)
+                    return field
+                }
+                const name = input('name', 'Style name', 100)
+                const color = input('color', 'Style road color', 7)
+                const used = document.createElement('td')
+                const actions = document.createElement('td')
+                const remove = document.createElement('button')
+                remove.type = 'button'
+                remove.className = 'danger'
+                remove.textContent = 'Delete'
+                remove.addEventListener('click', () => this.deleteStyle(style.id), { signal: this.abort.signal })
+                actions.append(remove)
+                row.append(used, actions)
+                this.styleRows.append(row)
+                editors = { row, name, color, used, remove }
+                this.styleEditors.set(style.id, editors)
+            }
+            if (this.styleRows.children[index] !== editors.row) this.styleRows.insertBefore(editors.row, this.styleRows.children[index] || null)
+            const count = usage.get(style.id) || 0
+            for (const [field, value] of [[editors.name, style.name], [editors.color, style.roadColor]]) {
+                field.disabled = this.busy
+                if (field !== document.activeElement || this.busy) field.value = value
+            }
+            editors.color.setAttribute('aria-label', `Road color for ${style.name}`)
+            editors.used.textContent = String(count)
+            editors.remove.disabled = this.busy || count > 0
+            editors.remove.setAttribute('aria-label', `Delete road style ${style.name}`)
+        }
+        this.addStyleButton.disabled = this.busy || model.styles.length >= 256
+        const choices = [['', 'Track default'], ...model.styles.map(style => [style.id, style.name])]
+        if (JSON.stringify(choices) !== this.styleChoices) {
+            this.segmentStyle.replaceChildren(...choices.map(([value, label]) => {
+                const option = document.createElement('option')
+                option.value = value
+                option.textContent = label
+                return option
+            }))
+            this.styleChoices = JSON.stringify(choices)
+        }
     }
 
     changeHandle(field) {
@@ -270,15 +365,14 @@ export class ViewTrack extends HTMLElement {
             field.value = curved ? (field.dataset.handle === 'start' ? segment.c : segment.d)[field.dataset.axis] : ''
         }
         const record = model.segments.find(record => record.id === this.selectedSegment)
-        this.segmentColor.disabled = this.busy || !record
-        this.segmentColor.placeholder = model.rendering.roadColor
-        if (this.segmentColor !== document.activeElement || this.busy) this.segmentColor.value = record && record.roadColor !== null ? record.roadColor : ''
-        this.resetSegmentColor.disabled = this.busy || !record || record.roadColor === null
+        this.segmentStyle.disabled = this.busy || !record
+        this.segmentStyle.value = record && record.styleId !== null ? record.styleId : ''
         this.resetHandles.disabled = this.busy || this.preview || !curved || record.handles === null
     }
 
     updateControls() {
         const model = this.drag && this.drag.kind === 'handle' ? this.drag.draft : this.history.model
+        this.updateStyleControls(model)
         this.updateSegmentControls(model)
         for (const field of this.fields) {
             field.disabled = this.busy || (this.preview && field.dataset.section !== 'rendering')

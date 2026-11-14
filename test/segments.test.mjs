@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createBlueprint, syncTrackSegments, validateBlueprint, TrackHistory } from '../src/model.mjs'
 import { trackSegments, trackPath, segmentPoint, nearestSegment } from '../src/geometry.mjs'
-import { editTrackSegment, resetTrackHandles, moveTrackHandle, moveTrackSelection, insertTrackPoint, setTrackSegmentColor } from '../src/interaction.mjs'
+import { editTrackSegment, resetTrackHandles, moveTrackHandle, moveTrackSelection, insertTrackPoint, setTrackSegmentStyle } from '../src/interaction.mjs'
 import { exportBlueprint } from '../src/svg.mjs'
 
 function blueprint() {
@@ -189,40 +189,42 @@ test('handle placement follows grid snapping and document bounds', () => {
     assert.deepEqual(trackSegments(bounded)[0].d, { x: 0, y: 800 })
 })
 
-test('color edits and reset are isolated, undoable and leave geometry unchanged', () => {
+test('style assignments and reset are isolated, undoable and leave geometry unchanged', () => {
     const initial = blueprint()
+    initial.styles.push({ id: 'asphalt', name: 'Asphalt', roadColor: '#123456' })
     const id = initial.segments[0].id
     const history = new TrackHistory(initial)
-    const colored = setTrackSegmentColor(initial, id, '#123456')
+    const colored = setTrackSegmentStyle(initial, id, 'asphalt')
     history.commit(colored)
-    assert.equal(initial.segments[0].roadColor, null)
+    assert.equal(initial.segments[0].styleId, null)
     assert.deepEqual(colored.segments.slice(1), initial.segments.slice(1))
     assert.deepEqual(trackSegments(colored), trackSegments(initial))
-    history.commit(setTrackSegmentColor(history.model, id, null))
+    history.commit(setTrackSegmentStyle(history.model, id, null))
     assert.deepEqual(history.model, initial)
     history.undo()
-    assert.equal(history.model.segments[0].roadColor, '#123456')
+    assert.equal(history.model.segments[0].styleId, 'asphalt')
     history.redo()
-    assert.equal(history.model.segments[0].roadColor, null)
-    assert.equal(history.commit(setTrackSegmentColor(history.model, id, null)), false)
-    assert.throws(() => setTrackSegmentColor(initial, 'missing', '#123456'), /Missing segment/)
-    assert.throws(() => setTrackSegmentColor(initial, id, 'red'), /Invalid segment road color/)
+    assert.equal(history.model.segments[0].styleId, null)
+    assert.equal(history.commit(setTrackSegmentStyle(history.model, id, null)), false)
+    assert.throws(() => setTrackSegmentStyle(initial, 'missing', 'asphalt'), /Missing segment/)
+    assert.throws(() => setTrackSegmentStyle(initial, id, 'red'), /Missing road style/)
 })
 
-test('segment color survives movement, shape changes, handle reset and splitting', () => {
+test('segment style survives movement, shape changes, handle reset and splitting', () => {
     for (const shape of ['curve', 'straight']) {
         let model = blueprint()
         const id = model.segments[0].id
-        model = setTrackSegmentColor(model, id, '#123456')
+        model.styles.push({ id: 'asphalt', name: 'Asphalt', roadColor: '#123456' })
+        model = setTrackSegmentStyle(model, id, 'asphalt')
         model = editTrackSegment(model, id, shape)
         model = resetTrackHandles(model, id)
         model = moveTrackSelection(model, new Set(['a']), { x: 10, y: 10 })
         const point = { id: 'new', ...segmentPoint(trackSegments(model)[0], 0.5) }
         model = insertTrackPoint(model, 0, point, 0.5)
-        assert.deepEqual(model.segments.slice(0, 2).map(segment => segment.roadColor), ['#123456', '#123456'])
-        assert.equal(model.segments[2].roadColor, null)
+        assert.deepEqual(model.segments.slice(0, 2).map(segment => segment.styleId), ['asphalt', 'asphalt'])
+        assert.equal(model.segments[2].styleId, null)
         syncTrackSegments(model)
         assert.deepEqual(validateBlueprint(model), model)
-        assert.equal(model.segments[0].roadColor, '#123456')
+        assert.equal(model.segments[0].styleId, 'asphalt')
     }
 })

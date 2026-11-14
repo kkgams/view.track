@@ -29,7 +29,7 @@ export function createBlueprint() {
     return { format: BLUEPRINT_FORMAT, version: 1, name: 'Untitled track',
         viewport: { width: 1200, height: 800 },
         settings: { closed: true, snap: true, grid: true, gridSize: 40 },
-        points: [], segments: [], annotations: [], rendering: createRendering() }
+        points: [], segments: [], styles: [], annotations: [], rendering: createRendering() }
 }
 
 export function validateBlueprint(value) {
@@ -48,6 +48,17 @@ export function validateBlueprint(value) {
         if (!['x', 'y'].every(key => Number.isFinite(point[key]) && Math.abs(point[key]) <= 100000)) fail('point coordinates')
     }
     if (!Array.isArray(value.annotations)) fail('annotations')
+    if (!Array.isArray(value.styles) || value.styles.length > 256) fail('styles (maximum 256)')
+    const styleIds = new Set(), styleNames = new Set()
+    for (const style of value.styles) {
+        if (!style || typeof style.id !== 'string' || !style.id || styleIds.has(style.id)) fail('style IDs must be unique')
+        styleIds.add(style.id)
+        if (typeof style.name !== 'string' || !style.name.trim() || style.name !== style.name.trim() || style.name.length > 100) fail('style name (1–100 characters, no surrounding spaces)')
+        const name = style.name.toLowerCase()
+        if (styleNames.has(name)) fail('style names must be unique')
+        styleNames.add(name)
+        if (typeof style.roadColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(style.roadColor)) fail('style road color (use #RRGGBB)')
+    }
     if (!Array.isArray(value.segments)) fail('segments')
     const pairs = trackPointPairs(value)
     if (value.segments.length !== pairs.length) fail('segment count must match the route')
@@ -58,7 +69,7 @@ export function validateBlueprint(value) {
         const [from, to] = pairs[index]
         if (segment.from !== from.id || segment.to !== to.id) fail('segment endpoints must match route order')
         if (!['straight', 'curve'].includes(segment.shape)) fail('segment shape')
-        if (segment.roadColor !== null && (typeof segment.roadColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(segment.roadColor))) fail('segment road color (use #RRGGBB or null)')
+        if (segment.styleId !== null && !styleIds.has(segment.styleId)) fail('segment style must reference a defined style or be null')
         if (segment.handles !== null) {
             if (!segment.handles || !['start', 'end'].every(key => {
                 const handle = segment.handles[key]
@@ -126,6 +137,6 @@ export function trackPointPairs(model) {
 export function syncTrackSegments(model) {
     const existing = new Map(model.segments.map(segment => [JSON.stringify([segment.from, segment.to]), segment]))
     model.segments = trackPointPairs(model).map(([from, to]) => existing.get(JSON.stringify([from.id, to.id])) ||
-        { id: crypto.randomUUID(), from: from.id, to: to.id, shape: 'curve', handles: null, roadColor: null })
+        { id: crypto.randomUUID(), from: from.id, to: to.id, shape: 'curve', handles: null, styleId: null })
     return model
 }
