@@ -38,10 +38,37 @@ points. Smooth curves use uniform Catmull–Rom converted to cubic Béziers, wit
 no manual handles or road geometry. Coincident points are permitted. With fewer
 than three points, a closed route is displayed as an open segment.
 
-SVG files have a white background and dark centerline, without editing overlays.
-Use them directly in browsers, webpages and wikis. Ordinary SVG drawings without
+SVG files have a white background and the selected road appearance, without
+editing overlays. Use them directly in browsers, webpages and wikis. Ordinary SVG drawings without
 this editor's metadata cannot be imported. Imported drawing markup is never
 mounted or executed.
+
+## Road appearance
+
+Choose **Styled road** or **Centerline only** under Road appearance. The choice
+applies to the editor, clean preview and saved SVG. New blueprints use a styled
+road; older SVGs without rendering settings reopen as their original simple line.
+Appearance edits are undoable and never move control points. You can adjust
+appearance while clean preview is enabled.
+
+| Setting | Meaning |
+| --- | --- |
+| Road width / color | Asphalt stroke width (1–200 units) and `#RRGGBB` color |
+| Shoulder width / color | Added width on each side (0–50 units) and color |
+| Outline thickness / color | Added thickness outside each shoulder (0–50 units) and color |
+| Centerline marking / color | Show or hide the 1.5-unit center marking and choose its color |
+| Dash lengths | Space- or comma-separated lengths, such as `8 10`; empty means solid |
+
+The road uses one centerline path in SVG `<defs>`. Ordered `<use>` references
+paint the outline, shoulders, asphalt and optional center marking. Their widths
+are `road + 2×shoulder + 2×outline`, `road + 2×shoulder`, and `road` respectively.
+All layers update from the same geometry. Centerline-only mode uses a simple
+12-unit stroke instead, retaining the road settings when switching back.
+
+Dash patterns accept up to 16 lengths from 0 to 1000, with at least one positive
+length. Colors accept six-digit hex values only. These are SVG strokes, not
+separate editable curves, offset road edges or meshes. Whole-path layering does
+not establish over/under ordering at crossings.
 
 ## Editable SVG format
 
@@ -57,6 +84,10 @@ into points. The format is `gams.track-blueprint`, schema version `1`.
 | `settings` | `closed`, `smooth`, `snap`, `grid`, `gridSize` |
 | `points` | Ordered `{id, x, y}` records; IDs remain stable when points move |
 | `annotations` | Reserved array for later design stages; empty in newly created V1 blueprints |
+| `rendering` | `mode`, `roadWidth`, `roadColor`, `edgeWidth`, `edgeColor`, `outlineWidth`, `outlineColor`, `centerlineVisible`, `centerlineColor`, `centerlineDash` |
+
+`rendering` is an optional, additive version-1 field. When absent, the importer
+supplies centerline-only defaults; a present but malformed object is rejected.
 
 Unknown JSON fields on the document, points and annotations survive save/load
 and undo/redo. Later versions can associate conceptual elevation with point IDs

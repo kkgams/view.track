@@ -6,6 +6,20 @@ export function escapeXml(text) {
     return String(text).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff\ud800-\udfff]/gu, '\ufffd').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;')
 }
 
+export function renderTrack(model, id = 'track-centerline', simpleColor = '#263b50') {
+    const style = model.rendering
+    const reference = escapeXml(id)
+    const use = (color, width, dash = '') => `<use href="#${reference}" stroke="${color}" stroke-width="${width}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`
+    const edgeWidth = style.roadWidth + 2 * style.edgeWidth
+    const layers = style.mode === 'centerline' ? [use(simpleColor, 12)] : [
+        use(style.outlineColor, edgeWidth + 2 * style.outlineWidth),
+        use(style.edgeColor, edgeWidth),
+        use(style.roadColor, style.roadWidth),
+        ...(style.centerlineVisible ? [use(style.centerlineColor, 1.5, style.centerlineDash)] : []),
+    ]
+    return `<defs><path d="${trackPath(model)}" id="${reference}"/></defs>\n<g fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none">${layers.join('')}</g>`
+}
+
 export function exportBlueprint(model) {
     const checked = validateBlueprint(model)
     const metadata = JSON.stringify(checked).replace(/[\u007f-\uffff]/g, character => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`)
@@ -14,7 +28,7 @@ export function exportBlueprint(model) {
 <title>${escapeXml(checked.name)}</title>
 <metadata id="gams-track-blueprint">${escapeXml(metadata)}</metadata>
 <rect width="${checked.viewport.width}" height="${checked.viewport.height}" fill="#ffffff"/>
-<path d="${trackPath(checked)}" fill="none" stroke="#263b50" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+${renderTrack(checked)}
 </svg>\n`
     if (source.length > 8 * 1024 * 1024) throw new Error('Blueprint SVG exceeds the 8 MiB import limit')
     return source

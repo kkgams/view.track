@@ -5,7 +5,9 @@ Original work by [kkgams](https://github.com/kkgams), licensed under [Apache-2.0
 
 Click to add ordered points, drag to reshape, or insert points on existing
 segments. Toggle smooth/straight, closed/open, grid and snapping. Undo/redo,
-clean preview and GAMS save/load are included. Saved SVGs embed versioned editor
+clean preview and GAMS save/load are included. Choose a simple centerline or a
+layered road with configurable asphalt, shoulders, outline and center markings.
+Appearance is undoable and saved with the blueprint. Saved SVGs embed versioned editor
 metadata and also work as ordinary images. No backend or frameworks are needed.
 
 ```sh

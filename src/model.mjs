@@ -1,10 +1,35 @@
 export const BLUEPRINT_FORMAT = 'gams.track-blueprint'
 
+export function createRendering(mode = 'road') {
+    return { mode, roadWidth: 24, roadColor: '#454b55', edgeWidth: 2, edgeColor: '#eeeeee',
+        outlineWidth: 2, outlineColor: '#15191f', centerlineVisible: true,
+        centerlineColor: '#f5d76e', centerlineDash: '8 10' }
+}
+
+export function validateRendering(rendering) {
+    const fail = message => { throw new Error(`Invalid blueprint: rendering ${message}`) }
+    if (!rendering || !['road', 'centerline'].includes(rendering.mode)) fail('mode')
+    for (const [key, minimum, maximum] of [['roadWidth', 1, 200], ['edgeWidth', 0, 50], ['outlineWidth', 0, 50]]) {
+        if (!Number.isFinite(rendering[key]) || rendering[key] < minimum || rendering[key] > maximum) fail(`${key} (${minimum}–${maximum})`)
+    }
+    for (const key of ['roadColor', 'edgeColor', 'outlineColor', 'centerlineColor']) {
+        if (typeof rendering[key] !== 'string' || !/^#[0-9a-f]{6}$/i.test(rendering[key])) fail(`${key} (use #RRGGBB)`)
+    }
+    if (typeof rendering.centerlineVisible !== 'boolean') fail('centerline visibility')
+    const dash = rendering.centerlineDash
+    if (typeof dash !== 'string' || dash.length > 128) fail('dash pattern')
+    if (dash !== '') {
+        if (!/^\d+(?:\.\d+)?(?:(?: +| *, *)\d+(?:\.\d+)?)*$/.test(dash)) fail('dash pattern (use positive lengths, or empty for solid)')
+        const lengths = dash.split(/[ ,]+/).map(Number)
+        if (lengths.length > 16 || lengths.some(length => length > 1000) || !lengths.some(length => length > 0)) fail('dash lengths (0–1000, not all zero)')
+    }
+}
+
 export function createBlueprint() {
     return { format: BLUEPRINT_FORMAT, version: 1, name: 'Untitled track',
         viewport: { width: 1200, height: 800 },
         settings: { closed: true, smooth: true, snap: true, grid: true, gridSize: 40 },
-        points: [], annotations: [] }
+        points: [], annotations: [], rendering: createRendering() }
 }
 
 export function validateBlueprint(value) {
@@ -23,7 +48,11 @@ export function validateBlueprint(value) {
         if (!['x', 'y'].every(key => Number.isFinite(point[key]) && Math.abs(point[key]) <= 100000)) fail('point coordinates')
     }
     if (!Array.isArray(value.annotations)) fail('annotations')
-    return structuredClone(value)
+    const checked = structuredClone(value)
+    // Version 1 SVGs saved before road styling had no rendering settings.
+    if (!Object.hasOwn(checked, 'rendering')) checked.rendering = createRendering('centerline')
+    validateRendering(checked.rendering)
+    return checked
 }
 
 export class TrackHistory {

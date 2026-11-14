@@ -12,6 +12,7 @@ export class ViewTrack extends HTMLElement {
         this.busy = false
         this.drag = null
         this.controls = []
+        this.centerlineId = `track-centerline-${crypto.randomUUID()}`
     }
 
     get path() { return this.history.context.path }
@@ -31,10 +32,25 @@ export class ViewTrack extends HTMLElement {
 <fieldset><legend>Grid</legend><label><input data-field="grid" type="checkbox"> Show grid</label>
 <label><input data-field="snap" type="checkbox"> Snap to grid</label>
 <label>Grid size <input data-field="gridSize" type="number" min="5" max="200" step="1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label></fieldset>
-</form></aside><footer><output aria-live="polite"></output></footer>`
+<fieldset><legend>Road appearance</legend>
+<label>Rendering <select data-section="rendering" data-field="mode"><option value="centerline">Centerline only</option><option value="road">Styled road</option></select></label>
+<label>Road width <input data-section="rendering" data-field="roadWidth" type="number" min="1" max="200" step="any"></label>
+<label>Road color <input data-section="rendering" data-field="roadColor" type="text" maxlength="7" placeholder="#454b55"></label>
+<label>Shoulder width per side <input data-section="rendering" data-field="edgeWidth" type="number" min="0" max="50" step="any"></label>
+<label>Shoulder color <input data-section="rendering" data-field="edgeColor" type="text" maxlength="7" placeholder="#eeeeee"></label>
+<label>Outline thickness per side <input data-section="rendering" data-field="outlineWidth" type="number" min="0" max="50" step="any"></label>
+<label>Outline color <input data-section="rendering" data-field="outlineColor" type="text" maxlength="7" placeholder="#15191f"></label>
+<label><input data-section="rendering" data-field="centerlineVisible" type="checkbox"> Centerline marking</label>
+<label>Marking color <input data-section="rendering" data-field="centerlineColor" type="text" maxlength="7" placeholder="#f5d76e"></label>
+<label>Dash lengths (empty = solid) <input data-section="rendering" data-field="centerlineDash" type="text" maxlength="128" placeholder="8 10"></label>
+</fieldset></form></aside><footer><output aria-live="polite"></output></footer>`
         this.svg = this.querySelector('svg')
         this.status = this.querySelector('output')
         this.fields = [...this.querySelectorAll('[data-field]')]
+        for (const field of this.querySelectorAll('[data-section="rendering"]:is(input[type="text"], input[type="number"])')) {
+            for (const attribute of ['autocomplete', 'autocorrect', 'autocapitalize']) field.setAttribute(attribute, 'off')
+            field.spellcheck = false
+        }
         this.querySelector('form').addEventListener('submit', event => event.preventDefault(), { signal: this.abort.signal })
         for (const field of this.fields) field.addEventListener('change', () => this.changeField(field), { signal: this.abort.signal })
         this.mountControls()
@@ -115,12 +131,15 @@ export class ViewTrack extends HTMLElement {
     }
 
     changeField(field) {
-        if (this.busy || this.preview) return
+        if (this.busy || (this.preview && field.dataset.section !== 'rendering')) return
         this.cancelDrag()
         const next = structuredClone(this.history.model)
         const key = field.dataset.field
         if (key === 'name') next.name = field.value
-        else next.settings[key] = field.type === 'checkbox' ? field.checked : Number(field.value)
+        else {
+            const section = field.dataset.section === 'rendering' ? next.rendering : next.settings
+            section[key] = field.type === 'checkbox' ? field.checked : field.type === 'number' ? (field.value === '' ? NaN : Number(field.value)) : field.value
+        }
         try { this.history.commit(next); this.render() }
         catch (error) { field.setCustomValidity(error.message); field.reportValidity(); field.setCustomValidity(''); this.render() }
     }
@@ -128,8 +147,9 @@ export class ViewTrack extends HTMLElement {
     updateControls() {
         const model = this.history.model
         for (const field of this.fields) {
-            field.disabled = this.busy || this.preview
-            const value = field.dataset.field === 'name' ? model.name : model.settings[field.dataset.field]
+            field.disabled = this.busy || (this.preview && field.dataset.section !== 'rendering')
+            const section = field.dataset.section === 'rendering' ? model.rendering : model.settings
+            const value = field.dataset.field === 'name' ? model.name : section[field.dataset.field]
             if (field.type === 'checkbox') field.checked = value
             else field.value = value
         }
@@ -156,10 +176,10 @@ export class ViewTrack extends HTMLElement {
         }
         this.svg.innerHTML = `<rect width="${model.viewport.width}" height="${model.viewport.height}" fill="${this.preview ? '#ffffff' : '#121c28'}"/>
 <path d="${grid.join(' ')}" stroke="#344457" stroke-width="1" fill="none" pointer-events="none"/>
-<path d="${trackPath(model)}" stroke="${this.preview ? '#263b50' : '#91e5ff'}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none" pointer-events="none"/>
+${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
 <g data-element="points"></g>`
         if (!this.preview) {
-            const layer = this.svg.querySelector('g')
+            const layer = this.svg.querySelector('[data-element="points"]')
             model.points.forEach((point, index) => {
                 const circle = document.createElementNS(SVG_NS, 'circle')
                 for (const [name, value] of Object.entries({ cx: point.x, cy: point.y, r: 9, fill: point.id === this.selected ? '#ffcf66' : '#ffffff', stroke: '#121c28', 'stroke-width': 3, 'data-id': point.id, 'aria-label': `Point ${index + 1}` })) circle.setAttribute(name, value)
