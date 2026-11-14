@@ -2,7 +2,7 @@
 
 An SVG racing-circuit blueprint editor for [GAMS](https://github.com/kkgams/gams).
 Draw and move points; select straight or curved segments, edit and reset curve
-handles; configure road appearance, grid and snapping;
+handles; color individual road segments; configure road appearance, grid and snapping;
 save editable SVGs with undo/redo and a clean preview.
 
 | View | Source → ZIP entry | Screenshot | License | Original work |

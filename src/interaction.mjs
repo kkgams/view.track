@@ -88,6 +88,7 @@ export function insertTrackPoint(model, index, point, t) {
     const left = next.segments[index], right = next.segments[index + 1]
     left.id = source.id
     left.shape = right.shape = source.shape
+    left.roadColor = right.roadColor = model.segments[index].roadColor
     if (source.shape === 'curve') {
         const lerp = (a, b) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })
         const offset = (a, b) => ({ x: a.x - b.x, y: a.y - b.y })
@@ -96,5 +97,14 @@ export function insertTrackPoint(model, index, point, t) {
         left.handles = { start: offset(ac, source.a), end: offset(leftEnd, middle) }
         right.handles = { start: offset(rightStart, middle), end: offset(db, source.b) }
     }
+    return next
+}
+
+export function setTrackSegmentColor(model, id, color) {
+    if (color !== null && (typeof color !== 'string' || !/^#[0-9a-f]{6}$/i.test(color))) throw new Error('Invalid segment road color: use #RRGGBB')
+    const next = structuredClone(model)
+    const segment = next.segments.find(segment => segment.id === id)
+    if (!segment) throw new Error('Missing segment')
+    segment.roadColor = color
     return next
 }

@@ -128,3 +128,34 @@ test('Insert splits a straight segment without turning it into curves', () => {
     assert.deepEqual(view.history.model.segments.slice(0, 2).map(segment => segment.shape), ['straight', 'straight'])
     assert.deepEqual(model.validateBlueprint(view.history.model), view.history.model)
 })
+
+test('segment color inspector commits overrides and resets to track color, including in preview', () => {
+    const view = editor()
+    view.selectedSegment = view.history.model.segments[0].id
+    view.segmentColor = { value: '#AbCdEf' }
+    view.changeSegmentColor(false)
+    assert.equal(view.history.model.segments[0].roadColor, '#AbCdEf')
+    view.preview = true
+    view.changeSegmentColor(true)
+    assert.equal(view.history.model.segments[0].roadColor, null)
+    assert.equal(view.segmentColor.value, '')
+    view.undo()
+    assert.equal(view.history.model.segments[0].roadColor, '#AbCdEf')
+    view.busy = true
+    view.changeSegmentColor(true)
+    assert.equal(view.history.model.segments[0].roadColor, '#AbCdEf')
+})
+
+test('invalid color input reports validation without changing the document or history', () => {
+    const view = editor()
+    view.selectedSegment = view.history.model.segments[0].id
+    let reports = 0
+    view.segmentColor = { value: 'red', setCustomValidity() {}, reportValidity() { reports++ } }
+    view.changeSegmentColor(false)
+    assert.equal(reports, 1)
+    assert.equal(view.history.past.length, 0)
+    assert.equal(view.history.model.segments[0].roadColor, null)
+    view.segmentColor.value = ''
+    view.changeSegmentColor(false)
+    assert.equal(view.history.past.length, 0)
+})

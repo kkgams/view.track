@@ -22,12 +22,22 @@ export function segmentPoint(segment, t) {
         y: u ** 3 * segment.a.y + 3 * u * u * t * segment.c.y + 3 * u * t * t * segment.d.y + t ** 3 * segment.b.y }
 }
 
+function trackCoordinates(point) {
+    return `${Number(point.x.toFixed(3))} ${Number(point.y.toFixed(3))}`
+}
+
+function segmentCommand(segment) {
+    return segment.shape === 'curve' ? `C ${trackCoordinates(segment.c)} ${trackCoordinates(segment.d)} ${trackCoordinates(segment.b)}` : `L ${trackCoordinates(segment.b)}`
+}
+
+export function segmentPath(segment) {
+    return `M ${trackCoordinates(segment.a)} ${segmentCommand(segment)}`
+}
+
 export function trackPath(model) {
     if (!model.points.length) return ''
-    const number = n => Number(n.toFixed(3))
-    const xy = p => `${number(p.x)} ${number(p.y)}`
-    const segments = trackSegments(model)
-    return `M ${xy(model.points[0])}` + segments.map(s => s.shape === 'curve' ? ` C ${xy(s.c)} ${xy(s.d)} ${xy(s.b)}` : ` L ${xy(s.b)}`).join('') + (model.settings.closed && model.points.length > 2 ? ' Z' : '')
+    return `M ${trackCoordinates(model.points[0])}` + trackSegments(model).map(segment => ` ${segmentCommand(segment)}`).join('') +
+        (model.settings.closed && model.points.length > 2 ? ' Z' : '')
 }
 
 // Sample only for picking; saved geometry always comes from the control points.

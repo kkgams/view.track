@@ -65,6 +65,8 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 | Zoom in / Fit track / Zoom out | Change the view scale or fit the full track and its road stroke |
 | Closed loop | Choose a closed circuit or open route |
 | Segment → Shape | Set the selected segment to Straight or Curved |
+| Segment → Road color | Override the selected segment’s asphalt color with `#RRGGBB` |
+| Use track road color / empty segment color | Remove the override and inherit Road appearance → Road color |
 | Segment → handle coordinates, or drag a curve handle | Adjust the selected curve without changing neighboring segments |
 | Reset curve handles | Restore the selected segment’s automatic curve |
 | Show grid / Snap to grid / Grid size | Configure the grid independently of curve generation |
@@ -117,6 +119,15 @@ a cubic Bézier. New segments start curved, with automatic handles calculated
 from neighboring points using uniform Catmull–Rom. The shape belongs to each
 segment, not to either endpoint; there is no global curve toggle.
 
+**Road color** overrides the selected segment’s asphalt color. Enter a six-digit
+hex color such as `#a05a32`; leave it empty or press **Use track road color** to
+inherit the track’s road color. The placeholder shows that track color. Color
+edits are undoable, available for both segment shapes, and may be made while
+previewing an already selected segment. Overrides appear in **Styled road** mode
+in the editor, preview and saved SVG. **Centerline only** retains them without
+displaying asphalt. Shoulder, outline and center-marking colors remain track-wide.
+Color is appearance only; it does not assign a road type or behavior.
+
 A selected curved segment shows two draggable handles. The inspector also
 provides their absolute X/Y coordinates for keyboard editing. Handle edits affect
 only the selected segment; they do not force neighboring curves to align.
@@ -130,11 +141,12 @@ manual handle with it. Switching to Straight hides but retains those offsets;
 switching back restores them. **Reset curve handles** removes both manual offsets
 and recalculates the curve from the current neighboring points.
 
-Insertion splits the selected connection into two segments of the same shape.
+Insertion splits the selected connection into two segments of the same shape
+and color override.
 Curves are split with explicit handles to preserve their shape; with snapping on,
 the inserted endpoint and its attached handles move to the grid. Deletion rebuilds
 affected connections as automatic curves. Unaffected segments retain their IDs,
-shapes and manual handles. Opening a closed loop removes its closing segment; closing it creates a
+shapes, color overrides and manual handles. Opening a closed loop removes its closing segment; closing it creates a
 new automatic closing segment. These topology edits are undoable. Preview and
 saved SVGs never include segment highlights or handles.
 
@@ -161,7 +173,9 @@ appearance while clean preview is enabled.
 The road uses one centerline path in SVG `<defs>`. Ordered `<use>` references
 paint the outline, shoulders, asphalt and optional center marking. Their widths
 are `road + 2×shoulder + 2×outline`, `road + 2×shoulder`, and `road` respectively.
-All layers update from the same geometry. Centerline-only mode uses a simple
+All layers update from the same geometry. Segment asphalt overrides paint above
+the track asphalt and below the continuous center marking. Internal color
+boundaries use flat stroke ends; open routes retain rounded outer caps. Centerline-only mode uses a simple
 12-unit stroke instead, retaining the road settings when switching back.
 
 Dash patterns accept up to 16 lengths from 0 to 1000, with at least one positive
@@ -182,7 +196,7 @@ into points. The format is `gams.track-blueprint`, schema version `1`.
 | `viewport` | Width and height in blueprint units |
 | `settings` | `closed`, `snap`, `grid`, `gridSize` |
 | `points` | Ordered `{id, x, y}` records; IDs remain stable when points move |
-| `segments` | Ordered `{id, from, to, shape, handles}` records matching route connections |
+| `segments` | Ordered `{id, from, to, shape, handles, roadColor}` records matching route connections |
 | `annotations` | Reserved array for later design stages; empty in newly created V1 blueprints |
 | `rendering` | `mode`, `roadWidth`, `roadColor`, `edgeWidth`, `edgeColor`, `outlineWidth`, `outlineColor`, `centerlineVisible`, `centerlineColor`, `centerlineDash` |
 
@@ -190,7 +204,9 @@ All listed fields are required. Segment IDs are unique; `from` and `to` referenc
 the adjacent points in route order, including the closing connection for closed
 routes with at least three points. `shape` is `straight` or `curve`. `handles`
 is `null` for automatic curves or `{start: {x, y}, end: {x, y}}` for manual
-endpoint-relative offsets. Manual handles remain stored while a segment is straight.
+endpoint-relative offsets. Manual handles remain stored while a segment is straight. `roadColor` is `null`
+to inherit the track asphalt color, or a six-digit `#RRGGBB` override. Newly
+created connections inherit the track color.
 Malformed metadata is rejected before replacing the document.
 
 Unknown JSON fields on the document, points, segments and annotations survive save/load

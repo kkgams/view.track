@@ -1,5 +1,5 @@
 import { validateBlueprint } from './model.mjs'
-import { trackPath } from './geometry.mjs'
+import { trackPath, trackSegments, segmentPath } from './geometry.mjs'
 
 export const SVG_NS = 'http://www.w3.org/2000/svg'
 export function escapeXml(text) {
@@ -11,10 +11,25 @@ export function renderTrack(model, id = 'track-centerline', simpleColor = '#263b
     const reference = escapeXml(id)
     const use = (color, width, dash = '') => `<use href="#${reference}" stroke="${color}" stroke-width="${width}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`
     const edgeWidth = style.roadWidth + 2 * style.edgeWidth
+    // Whole-route strokes keep joins and markings continuous; only asphalt is overpainted.
+    const colored = style.mode === 'road' ? trackSegments(model).filter(segment => model.segments[segment.index].roadColor !== null) : []
+    const closed = model.settings.closed && model.points.length > 2
+    const overrides = colored.map(segment => {
+        const color = model.segments[segment.index].roadColor
+        let markup = `<path d="${segmentPath(segment)}" stroke="${color}" stroke-width="${style.roadWidth}" stroke-linecap="butt"/>`
+        // Internal color boundaries are flat; only open-route ends need round caps.
+        if (!closed) {
+            for (const point of [...(segment.index === 0 ? [segment.a] : []), ...(segment.index === model.segments.length - 1 ? [segment.b] : [])]) {
+                markup += `<circle cx="${point.x}" cy="${point.y}" r="${style.roadWidth / 2}" fill="${color}" stroke="none"/>`
+            }
+        }
+        return markup
+    })
     const layers = style.mode === 'centerline' ? [use(simpleColor, 12)] : [
         use(style.outlineColor, edgeWidth + 2 * style.outlineWidth),
         use(style.edgeColor, edgeWidth),
         use(style.roadColor, style.roadWidth),
+        ...overrides,
         ...(style.centerlineVisible ? [use(style.centerlineColor, 1.5, style.centerlineDash)] : []),
     ]
     return `<defs><path d="${trackPath(model)}" id="${reference}"/></defs>\n<g fill="none" stroke-linecap="round" stroke-linejoin="round" pointer-events="none">${layers.join('')}</g>`

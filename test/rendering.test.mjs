@@ -175,3 +175,63 @@ test('export rejects invalid styling before attempting any styling interpolation
     assert.throws(() => exportBlueprint(model), /Invalid blueprint: rendering roadColor/)
     assert.equal(interpolated, false)
 })
+
+test('segment asphalt overrides sit above road paint but below continuous center markings', () => {
+    const model = blueprint()
+    model.segments[0].roadColor = '#aa3300'
+    model.segments[2].roadColor = '#33aa00'
+    const source = renderTrack(model)
+    const paths = elements(source, 'path')
+    assert.equal(paths.length, 3)
+    assert.equal(paths[0].d, trackPath(model))
+    assert.equal(paths[1].stroke, '#aa3300')
+    assert.equal(paths[2].stroke, '#33aa00')
+    for (const path of paths.slice(1)) {
+        assert.equal(path['stroke-width'], String(model.rendering.roadWidth))
+        assert.equal(path['stroke-linecap'], 'butt')
+    }
+    assert.ok(source.indexOf('stroke="#454b55"') < source.indexOf('stroke="#aa3300"'))
+    assert.ok(source.indexOf('stroke="#33aa00"') < source.indexOf('stroke="#f5d76e"'))
+    assert.equal(elements(source, 'circle').length, 0)
+    assert.deepEqual(elements(source, 'use').map(use => use.stroke), ['#15191f', '#eeeeee', '#454b55', '#f5d76e'])
+})
+
+test('open road overrides retain round outer caps without rounding internal color boundaries', () => {
+    const model = blueprint()
+    model.settings.closed = false
+    syncTrackSegments(model)
+    model.segments[0].roadColor = '#aa3300'
+    model.segments[1].roadColor = '#33aa00'
+    const source = renderTrack(model)
+    assert.deepEqual(elements(source, 'circle'), [
+        { cx: '40', cy: '80', r: '12', fill: '#aa3300', stroke: 'none' },
+        { cx: '180', cy: '360', r: '12', fill: '#33aa00', stroke: 'none' },
+    ])
+})
+
+test('centerline-only rendering retains segment colors in metadata without painting asphalt', () => {
+    const model = blueprint()
+    model.segments[0].roadColor = '#aa3300'
+    model.rendering.mode = 'centerline'
+    assert.equal(elements(renderTrack(model), 'path').length, 1)
+    assert.equal(elements(renderTrack(model), 'circle').length, 0)
+    assert.doesNotMatch(renderTrack(model), /#aa3300/)
+    assert.equal(metadataJson(exportBlueprint(model)).segments[0].roadColor, '#aa3300')
+})
+
+for (const color of [undefined, '', '#fff', 'red', 123, {}, '#123456\n', 'url(#paint)', '#123456"/><script/>']) {
+    test(`reject invalid segment road color ${String(color)}`, () => {
+        const model = blueprint()
+        model.segments[0].roadColor = color
+        assert.throws(() => validateBlueprint(model), /segment road color/)
+        assert.throws(() => exportBlueprint(model), /segment road color/)
+    })
+}
+
+test('segment color accepts mixed-case hex and null inheritance', () => {
+    const model = blueprint()
+    model.segments[0].roadColor = '#AbCdEf'
+    assert.deepEqual(validateBlueprint(model), model)
+    assert.equal(metadataJson(exportBlueprint(model)).segments[1].roadColor, null)
+    assert.match(renderTrack(model), /stroke="#AbCdEf"/)
+})

@@ -38,6 +38,8 @@ export class ViewTrack extends HTMLElement {
 <fieldset data-element="segment-inspector"><legend>Segment</legend>
 <label>Selected segment <select data-element="segment-picker" aria-label="Selected segment"></select></label>
 <label>Shape <select data-element="segment-shape"><option value="straight">Straight</option><option value="curve">Curved</option></select></label>
+<label>Road color (empty = track color) <input data-element="segment-color" type="text" maxlength="7" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
+<button type="button" data-element="reset-segment-color">Use track road color</button>
 <label>Start handle X <input data-handle="start" data-axis="x" type="number" step="any"></label>
 <label>Start handle Y <input data-handle="start" data-axis="y" type="number" step="any"></label>
 <label>End handle X <input data-handle="end" data-axis="x" type="number" step="any"></label>
@@ -70,6 +72,8 @@ export class ViewTrack extends HTMLElement {
         for (const field of this.fields) field.addEventListener('change', () => this.changeField(field), { signal: this.abort.signal })
         this.segmentPicker = this.querySelector('[data-element="segment-picker"]')
         this.segmentShape = this.querySelector('[data-element="segment-shape"]')
+        this.segmentColor = this.querySelector('[data-element="segment-color"]')
+        this.resetSegmentColor = this.querySelector('[data-element="reset-segment-color"]')
         this.handleFields = [...this.querySelectorAll('[data-handle]')]
         this.resetHandles = this.querySelector('[data-element="reset-handles"]')
         for (const field of this.handleFields) {
@@ -85,6 +89,8 @@ export class ViewTrack extends HTMLElement {
             this.render()
         }, { signal: this.abort.signal })
         this.segmentShape.addEventListener('change', () => this.changeSegment(false), { signal: this.abort.signal })
+        this.segmentColor.addEventListener('change', () => this.changeSegmentColor(false), { signal: this.abort.signal })
+        this.resetSegmentColor.addEventListener('click', () => this.changeSegmentColor(true), { signal: this.abort.signal })
         this.resetHandles.addEventListener('click', () => this.changeSegment(true), { signal: this.abort.signal })
         this.mountControls()
         const listen = (type, method) => this.svg.addEventListener(type, event => this[method](event), { signal: this.abort.signal })
@@ -205,6 +211,21 @@ export class ViewTrack extends HTMLElement {
         this.render()
     }
 
+    changeSegmentColor(reset) {
+        if (this.busy || !this.selectedSegment) return
+        this.cancelDrag()
+        const color = reset || this.segmentColor.value === '' ? null : this.segmentColor.value
+        if (color !== null && !/^#[0-9a-f]{6}$/i.test(color)) {
+            this.segmentColor.setCustomValidity('Use #RRGGBB, or leave empty for the track color')
+            this.segmentColor.reportValidity()
+            this.segmentColor.setCustomValidity('')
+            return
+        }
+        this.history.commit(setTrackSegmentColor(this.history.model, this.selectedSegment, color))
+        this.segmentColor.value = color === null ? '' : color
+        this.render()
+    }
+
     changeHandle(field) {
         if (this.busy || this.preview || !this.selectedSegment) return
         this.cancelDrag()
@@ -249,6 +270,10 @@ export class ViewTrack extends HTMLElement {
             field.value = curved ? (field.dataset.handle === 'start' ? segment.c : segment.d)[field.dataset.axis] : ''
         }
         const record = model.segments.find(record => record.id === this.selectedSegment)
+        this.segmentColor.disabled = this.busy || !record
+        this.segmentColor.placeholder = model.rendering.roadColor
+        if (this.segmentColor !== document.activeElement || this.busy) this.segmentColor.value = record && record.roadColor !== null ? record.roadColor : ''
+        this.resetSegmentColor.disabled = this.busy || !record || record.roadColor === null
         this.resetHandles.disabled = this.busy || this.preview || !curved || record.handles === null
     }
 

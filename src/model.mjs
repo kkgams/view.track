@@ -58,6 +58,7 @@ export function validateBlueprint(value) {
         const [from, to] = pairs[index]
         if (segment.from !== from.id || segment.to !== to.id) fail('segment endpoints must match route order')
         if (!['straight', 'curve'].includes(segment.shape)) fail('segment shape')
+        if (segment.roadColor !== null && (typeof segment.roadColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(segment.roadColor))) fail('segment road color (use #RRGGBB or null)')
         if (segment.handles !== null) {
             if (!segment.handles || !['start', 'end'].every(key => {
                 const handle = segment.handles[key]
@@ -125,6 +126,6 @@ export function trackPointPairs(model) {
 export function syncTrackSegments(model) {
     const existing = new Map(model.segments.map(segment => [JSON.stringify([segment.from, segment.to]), segment]))
     model.segments = trackPointPairs(model).map(([from, to]) => existing.get(JSON.stringify([from.id, to.id])) ||
-        { id: crypto.randomUUID(), from: from.id, to: to.id, shape: 'curve', handles: null })
+        { id: crypto.randomUUID(), from: from.id, to: to.id, shape: 'curve', handles: null, roadColor: null })
     return model
 }
