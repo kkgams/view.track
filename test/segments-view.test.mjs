@@ -218,16 +218,17 @@ test('style rows support arrow, Home/End and activation keys without interceptin
     assert.equal(view.history.past.length, 0)
 })
 
-test('adding a style selects it and focuses its properties; deleting selects the next row', () => {
+test('adding a style focuses and selects its name; deleting selects the next row', () => {
     const view = editor()
-    let focused = false
-    view.styleName = { focus() { focused = true } }
+    const actions = []
+    view.styleName = { focus() { actions.push('focus') }, select() { actions.push('select') } }
     view.addStyle()
     assert.equal(view.selectedStyle, view.history.model.styles[0].id)
-    assert.equal(focused, true)
+    assert.deepEqual(actions, ['focus', 'select'])
     const first = view.selectedStyle
     view.addStyle()
     const second = view.selectedStyle
+    assert.deepEqual(actions, ['focus', 'select', 'focus', 'select'])
     assert.notEqual(first, second)
     view.deleteStyle(second)
     assert.equal(view.selectedStyle, first)

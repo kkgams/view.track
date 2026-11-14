@@ -272,6 +272,7 @@ export class ViewTrack extends HTMLElement {
         this.selectedStyle = this.history.model.styles.at(-1).id
         this.render()
         this.styleName.focus()
+        this.styleName.select()
     }
 
     changeStyle(field) {
