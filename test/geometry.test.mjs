@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createBlueprint, placePoint, TrackHistory } from '../src/model.mjs'
+import { createBlueprint, placePoint, TrackHistory, syncTrackSegments } from '../src/model.mjs'
 import { trackSegments, segmentPoint, trackPath, nearestSegment } from '../src/geometry.mjs'
 
 function blueprint(coordinates, settings = {}) {
     const value = createBlueprint()
-    value.settings = { ...value.settings, ...settings }
+    const { shape = 'curve', ...routeSettings } = settings
+    value.settings = { ...value.settings, ...routeSettings }
     value.points = coordinates.map(([x, y], index) => ({ id: String(index), x, y }))
+    syncTrackSegments(value)
+    value.segments.forEach(segment => { segment.shape = shape })
     return value
 }
 function near(actual, expected, epsilon = 1e-9) {
@@ -24,8 +27,8 @@ test('empty and single-point tracks have no segments or insertion target', () =>
     assert.equal(nearestSegment(single, { x: 10, y: 20 }), null)
 })
 test('two points never create a closing edge, even with closed enabled', () => {
-    for (const smooth of [true, false]) {
-        const value = blueprint([[0, 0], [60, 60]], { smooth })
+    for (const shape of ['curve', 'straight']) {
+        const value = blueprint([[0, 0], [60, 60]], { shape })
         const segments = trackSegments(value)
         assert.equal(segments.length, 1)
         assert.doesNotMatch(trackPath(value), /Z/)
@@ -58,12 +61,13 @@ test('closed curves wrap neighbors and join tangent directions at the seam', () 
     assert.match(trackPath(value), / C 110 -10 10 -10 0 0 Z$/)
 })
 test('straight paths use lines, close only when requested, and preserve point order', () => {
-    const value = blueprint([[0, 0], [100, 0], [100, 100]], { smooth: false })
+    const value = blueprint([[0, 0], [100, 0], [100, 100]], { shape: 'straight' })
     assert.equal(trackPath(value), 'M 0 0 L 100 0 L 100 100 L 0 0 Z')
     const first = trackSegments(value)[0]
     assert.deepEqual(first.c, first.a)
     assert.deepEqual(first.d, first.b)
     value.settings.closed = false
+    syncTrackSegments(value)
     assert.equal(trackPath(value), 'M 0 0 L 100 0 L 100 100')
 })
 test('cubic evaluation agrees with an independently calculated midpoint and endpoints', () => {
@@ -73,21 +77,21 @@ test('cubic evaluation agrees with an independently calculated midpoint and endp
     assert.deepEqual(segmentPoint(segment, 0.5), { x: 50, y: 75 })
 })
 test('path serialization rounds coordinates without mutating authored values', () => {
-    const value = blueprint([[1.123456, -0.00001], [2.99999, 4.123456]], { smooth: false, closed: false })
+    const value = blueprint([[1.123456, -0.00001], [2.99999, 4.123456]], { shape: 'straight', closed: false })
     const before = structuredClone(value)
     assert.equal(trackPath(value), 'M 1.123 0 L 3 4.123')
     assert.deepEqual(value, before)
 })
 test('fully coincident points produce finite curves and a deterministic nearest result', () => {
-    for (const smooth of [true, false]) for (const closed of [true, false]) {
-        const value = blueprint([[30, 40], [30, 40], [30, 40]], { smooth, closed })
+    for (const shape of ['curve', 'straight']) for (const closed of [true, false]) {
+        const value = blueprint([[30, 40], [30, 40], [30, 40]], { shape, closed })
         assert.doesNotMatch(trackPath(value), /NaN|Infinity/)
         for (const segment of trackSegments(value)) assert.deepEqual(segmentPoint(segment, 0.5), { x: 30, y: 40 })
         assert.deepEqual(nearestSegment(value, { x: 33, y: 44 }), { index: 0, x: 30, y: 40, distance: 5 })
     }
 })
 test('nearest straight segment projects inside an edge and clamps beyond an endpoint', () => {
-    const value = blueprint([[0, 0], [100, 0]], { smooth: false, closed: false })
+    const value = blueprint([[0, 0], [100, 0]], { shape: 'straight', closed: false })
     const middle = nearestSegment(value, { x: 37, y: 8 })
     assert.equal(middle.index, 0)
     near(middle.x, 37)
@@ -107,7 +111,7 @@ test('nearest smooth segment picks rendered curve instead of its control-point c
     assert.notEqual(point.x, point.y)
 })
 test('closing-edge insertion appends between last and first, snaps, and remains undoable', () => {
-    const value = blueprint([[0, 0], [200, 0], [200, 200]], { smooth: false, gridSize: 40 })
+    const value = blueprint([[0, 0], [200, 0], [200, 200]], { shape: 'straight', gridSize: 40 })
     const history = new TrackHistory(value)
     const hit = nearestSegment(history.model, { x: 97, y: 103 })
     assert.equal(hit.index, 2)
@@ -115,6 +119,7 @@ test('closing-edge insertion appends between last and first, snaps, and remains 
     near(hit.y, 100)
     const next = structuredClone(history.model)
     next.points.splice(hit.index + 1, 0, { id: 'inserted', ...placePoint(next, hit.x, hit.y) })
+    syncTrackSegments(next)
     assert.equal(history.commit(next), true)
     assert.deepEqual(history.model.points.map(point => point.id), ['0', '1', '2', 'inserted'])
     assert.deepEqual(history.model.points[3], { id: 'inserted', x: 120, y: 120 })
@@ -124,6 +129,7 @@ test('closing-edge insertion appends between last and first, snaps, and remains 
     history.redo()
     assert.equal(history.model.points.length, 4)
     value.settings.closed = false
+    syncTrackSegments(value)
     assert.equal(nearestSegment(value, { x: 97, y: 103 }).index, 0)
 })
 test('geometry queries do not modify extension metadata or model state', () => {

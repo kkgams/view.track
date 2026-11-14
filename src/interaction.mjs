@@ -1,3 +1,6 @@
+import { placePoint, syncTrackSegments } from './model.mjs'
+import { trackSegments } from './geometry.mjs'
+
 // Selection and camera state are session-only; neither changes the SVG document schema.
 export function pointsInBox(points, start, end, base = []) {
     const minX = Math.min(start.x, end.x), maxX = Math.max(start.x, end.x)
@@ -41,4 +44,57 @@ export function fitTrackCamera(points, viewport, padding = 40) {
     const height = width * viewport.height / viewport.width
     const camera = { x: (minX + maxX - width) / 2, y: (minY + maxY - height) / 2, width, height }
     return zoomTrackCamera(camera, viewport, { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }, 1)
+}
+
+export function editTrackSegment(model, id, shape) {
+    if (!['straight', 'curve'].includes(shape)) throw new Error('Invalid segment shape')
+    const next = structuredClone(model)
+    const segment = next.segments.find(segment => segment.id === id)
+    if (!segment) throw new Error('Missing segment')
+    segment.shape = shape
+    return next
+}
+
+export function resetTrackHandles(model, id) {
+    const next = structuredClone(model)
+    const segment = next.segments.find(segment => segment.id === id)
+    if (!segment) throw new Error('Missing segment')
+    segment.handles = null
+    return next
+}
+
+export function moveTrackHandle(model, id, handle, position) {
+    if (!['start', 'end'].includes(handle)) throw new Error('Invalid curve handle')
+    const geometry = trackSegments(model).find(segment => segment.id === id)
+    if (!geometry || geometry.shape !== 'curve') throw new Error('Missing curved segment')
+    const next = structuredClone(model)
+    const segment = next.segments[geometry.index]
+    if (segment.handles === null) segment.handles = {
+        start: { x: geometry.c.x - geometry.a.x, y: geometry.c.y - geometry.a.y },
+        end: { x: geometry.d.x - geometry.b.x, y: geometry.d.y - geometry.b.y },
+    }
+    const point = placePoint(model, position.x, position.y)
+    const endpoint = handle === 'start' ? geometry.a : geometry.b
+    segment.handles[handle] = { x: point.x - endpoint.x, y: point.y - endpoint.y }
+    return next
+}
+
+export function insertTrackPoint(model, index, point, t) {
+    const source = trackSegments(model)[index]
+    if (!source || !Number.isFinite(t) || t < 0 || t > 1) throw new Error('Invalid segment insertion')
+    const next = structuredClone(model)
+    next.points.splice(index + 1, 0, structuredClone(point))
+    syncTrackSegments(next)
+    const left = next.segments[index], right = next.segments[index + 1]
+    left.id = source.id
+    left.shape = right.shape = source.shape
+    if (source.shape === 'curve') {
+        const lerp = (a, b) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })
+        const offset = (a, b) => ({ x: a.x - b.x, y: a.y - b.y })
+        const ac = lerp(source.a, source.c), cd = lerp(source.c, source.d), db = lerp(source.d, source.b)
+        const leftEnd = lerp(ac, cd), rightStart = lerp(cd, db), middle = lerp(leftEnd, rightStart)
+        left.handles = { start: offset(ac, source.a), end: offset(leftEnd, middle) }
+        right.handles = { start: offset(rightStart, middle), end: offset(db, source.b) }
+    }
+    return next
 }

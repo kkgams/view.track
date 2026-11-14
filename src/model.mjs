@@ -28,8 +28,8 @@ export function validateRendering(rendering) {
 export function createBlueprint() {
     return { format: BLUEPRINT_FORMAT, version: 1, name: 'Untitled track',
         viewport: { width: 1200, height: 800 },
-        settings: { closed: true, smooth: true, snap: true, grid: true, gridSize: 40 },
-        points: [], annotations: [], rendering: createRendering() }
+        settings: { closed: true, snap: true, grid: true, gridSize: 40 },
+        points: [], segments: [], annotations: [], rendering: createRendering() }
 }
 
 export function validateBlueprint(value) {
@@ -38,7 +38,7 @@ export function validateBlueprint(value) {
     if (value.version !== 1) fail(`unsupported schema version ${value.version}`)
     if (typeof value.name !== 'string' || value.name.length > 1000) fail('name')
     if (!value.viewport || !['width', 'height'].every(key => Number.isFinite(value.viewport[key]) && value.viewport[key] >= 100 && value.viewport[key] <= 10000)) fail('viewport')
-    if (!value.settings || !['closed', 'smooth', 'snap', 'grid'].every(key => typeof value.settings[key] === 'boolean')) fail('settings')
+    if (!value.settings || !['closed', 'snap', 'grid'].every(key => typeof value.settings[key] === 'boolean')) fail('settings')
     if (!Number.isFinite(value.settings.gridSize) || value.settings.gridSize < 5 || value.settings.gridSize > 200) fail('grid size (5–200)')
     if (!Array.isArray(value.points) || value.points.length > 10000) fail('points (maximum 10000)')
     const ids = new Set()
@@ -48,11 +48,25 @@ export function validateBlueprint(value) {
         if (!['x', 'y'].every(key => Number.isFinite(point[key]) && Math.abs(point[key]) <= 100000)) fail('point coordinates')
     }
     if (!Array.isArray(value.annotations)) fail('annotations')
-    const checked = structuredClone(value)
-    // Version 1 SVGs saved before road styling had no rendering settings.
-    if (!Object.hasOwn(checked, 'rendering')) checked.rendering = createRendering('centerline')
-    validateRendering(checked.rendering)
-    return checked
+    if (!Array.isArray(value.segments)) fail('segments')
+    const pairs = trackPointPairs(value)
+    if (value.segments.length !== pairs.length) fail('segment count must match the route')
+    const segmentIds = new Set()
+    value.segments.forEach((segment, index) => {
+        if (!segment || typeof segment.id !== 'string' || !segment.id || segmentIds.has(segment.id)) fail('segment IDs must be unique')
+        segmentIds.add(segment.id)
+        const [from, to] = pairs[index]
+        if (segment.from !== from.id || segment.to !== to.id) fail('segment endpoints must match route order')
+        if (!['straight', 'curve'].includes(segment.shape)) fail('segment shape')
+        if (segment.handles !== null) {
+            if (!segment.handles || !['start', 'end'].every(key => {
+                const handle = segment.handles[key]
+                return handle && ['x', 'y'].every(axis => Number.isFinite(handle[axis]) && Math.abs(handle[axis]) <= 200000)
+            })) fail('segment handles')
+        }
+    })
+    validateRendering(value.rendering)
+    return structuredClone(value)
 }
 
 export class TrackHistory {
@@ -98,4 +112,19 @@ export function placePoint(model, x, y) {
     const step = model.settings.gridSize
     const snap = value => model.settings.snap ? Math.round(value / step) * step : value
     return { x: Math.max(0, Math.min(model.viewport.width, snap(x))), y: Math.max(0, Math.min(model.viewport.height, snap(y))) }
+}
+
+// Route order owns connectivity; segments own shape and endpoint-relative handles.
+export function trackPointPairs(model) {
+    const count = model.points.length
+    if (count < 2) return []
+    const closed = model.settings.closed && count > 2
+    return Array.from({ length: closed ? count : count - 1 }, (_, index) => [model.points[index], model.points[(index + 1) % count]])
+}
+
+export function syncTrackSegments(model) {
+    const existing = new Map(model.segments.map(segment => [JSON.stringify([segment.from, segment.to]), segment]))
+    model.segments = trackPointPairs(model).map(([from, to]) => existing.get(JSON.stringify([from.id, to.id])) ||
+        { id: crypto.randomUUID(), from: from.id, to: to.id, shape: 'curve', handles: null })
+    return model
 }

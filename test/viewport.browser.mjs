@@ -1,4 +1,4 @@
-import { createBlueprint } from '../src/model.mjs'
+import { createBlueprint, syncTrackSegments } from '../src/model.mjs'
 import { SVG_NS, renderTrack, updateTrackViewport, exportBlueprint } from '../src/svg.mjs'
 import { trackWheelZoomFactor, zoomTrackCamera } from '../src/interaction.mjs'
 
@@ -7,13 +7,15 @@ export function runViewportTests() {
     const check = (condition, message) => { if (!condition) throw new Error(message) }
     const model = createBlueprint()
     model.points = [{ id: 'a', x: 200, y: 200 }, { id: 'b', x: 900, y: 200 }, { id: 'c', x: 700, y: 600 }]
+    syncTrackSegments(model)
     const exported = exportBlueprint(model)
     const svg = document.createElementNS(SVG_NS, 'svg')
     svg.setAttribute('width', '1200')
     svg.setAttribute('height', '800')
     svg.innerHTML = `<rect data-element="viewport-background"/><rect data-element="document-boundary"/>
 ${renderTrack(model)}<g data-element="points"><circle cx="200" cy="200"/></g>
-<rect data-element="selection-box" x="100" y="100" width="300" height="300"/>`
+<rect data-element="selection-box" x="100" y="100" width="300" height="300"/>
+<g data-element="segment-overlay"><path data-element="segment-highlight"/><line/><circle/></g>`
     document.body.append(svg)
     try {
         let camera = { x: 0, y: 0, width: 1200, height: 800 }
@@ -53,8 +55,12 @@ ${renderTrack(model)}<g data-element="points"><circle cx="200" cy="200"/></g>
         scale = svg.getScreenCTM().a
         check(Math.abs(Number(point.getAttribute('r')) * scale - 9) < 1e-9, 'Resize changed handle hit size')
         check(Math.abs(Number(svg.querySelector('[data-element="selection-box"]').getAttribute('stroke-width')) * scale - 1.5) < 1e-9, 'Resize changed selection outline size')
+        const overlay = svg.querySelector('[data-element="segment-overlay"]')
+        check(Math.abs(Number(overlay.querySelector('circle').getAttribute('r')) * scale - 7) < 1e-9, 'Curve handle hit size changed')
+        check(Math.abs(Number(overlay.querySelector('line').getAttribute('stroke-width')) * scale - 1.5) < 1e-9, 'Curve handle line size changed')
+        check(Math.abs(Number(overlay.querySelector('path').getAttribute('stroke-width')) * scale - 3) < 1e-9, 'Segment highlight size changed')
         check(exportBlueprint(model) === exported, 'Camera updates changed the saved blueprint')
-        return { gestures: 3, updatesPerGesture: 40, targetsPreserved: true, geometryPreserved: true, handleSizePreserved: true, exportUnchanged: true }
+        return { gestures: 3, updatesPerGesture: 40, targetsPreserved: true, geometryPreserved: true, handleSizePreserved: true, segmentOverlaySizePreserved: true, exportUnchanged: true }
     } finally {
         svg.remove()
     }

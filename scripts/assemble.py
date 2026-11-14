@@ -8,8 +8,7 @@ parts = []
 for name in HELPERS:
     source = (ROOT / name).read_text()
     # Native helper tests use these imports; assembly already supplies both modules.
-    if name == "src/svg.mjs":
-        source = re.sub(r"(?m)^import[^\n]+from[ \t]+['\"]\./(?:model|geometry)\.mjs['\"];?[ \t]*\n?", "", source)
+    source = re.sub(r"(?m)^import[^\n]+from[ \t]+['\"]\./(?:model|geometry|interaction)\.mjs['\"];?[ \t]*\n?", "", source)
     source = re.sub(r"(?m)^export[ \t]+(?=(?:async[ \t]+)?(?:function|class|const|let|var)\b)", "", source)
     parts.append(f"// {name}\n{source.rstrip()}\n")
 entry = "src/views/view-track.js"

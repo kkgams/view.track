@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createBlueprint } from '../src/model.mjs'
+import { createBlueprint, syncTrackSegments } from '../src/model.mjs'
 import { trackPath } from '../src/geometry.mjs'
 import { SVG_NS, escapeXml, exportBlueprint } from '../src/svg.mjs'
 
@@ -21,6 +21,7 @@ test('export emits standalone SVG with dimensions, title, metadata and generated
     const value = createBlueprint()
     value.name = 'Track Ω 🏁'
     value.points = [{ id: 'a', x: 10, y: 20 }, { id: 'b', x: 90, y: 100 }, { id: 'c', x: 150, y: 30 }]
+    syncTrackSegments(value)
     const svg = exportBlueprint(value)
     assert.ok(svg.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n'))
     assert.ok(svg.includes(`<svg xmlns="${SVG_NS}" width="1200" height="800" viewBox="0 0 1200 800">`))
@@ -40,6 +41,7 @@ test('export preserves extensions and annotations without embedding their markup
     value.points = [{ id: attack, x: 1, y: 2, extension: { text: attack } }]
     value.annotations = [{ text: attack }]
     const before = structuredClone(value)
+    syncTrackSegments(value)
     const svg = exportBlueprint(value)
     assert.doesNotMatch(svg, /<script|<svg onload|<\/metadata><script/)
     assert.equal((svg.match(/<svg /g) || []).length, 1)
@@ -53,10 +55,12 @@ test('export geometry covers empty, single, open straight and closed curved trac
     assert.match(exportBlueprint(value), /<path d="M 10 20" /)
     value.points.push({ id: 'b', x: 30, y: 40 }, { id: 'c', x: 50, y: 20 })
     value.settings.closed = false
-    value.settings.smooth = false
+    syncTrackSegments(value)
+    value.segments.forEach(segment => { segment.shape = 'straight' })
     assert.match(exportBlueprint(value), /<path d="M 10 20 L 30 40 L 50 20" /)
     value.settings.closed = true
-    value.settings.smooth = true
+    syncTrackSegments(value)
+    value.segments.forEach(segment => { segment.shape = 'curve' })
     assert.ok(exportBlueprint(value).includes(`<path d="${trackPath(value)}"`))
     assert.match(trackPath(value), / C .* Z$/)
 })
@@ -64,7 +68,7 @@ test('export validates before interpolating dimensions, coordinates or metadata'
     for (const mutate of [
         value => { value.viewport.width = '100" onload="alert(1)' },
         value => { value.points = [{ id: 'p', x: '0"/><script/>', y: 0 }] },
-        value => { value.settings.smooth = 'false' },
+        value => { value.settings.closed = 'false' },
         value => { value.version = 999 },
     ]) {
         const value = createBlueprint()

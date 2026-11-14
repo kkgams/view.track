@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { BLUEPRINT_FORMAT, createBlueprint, validateBlueprint, TrackHistory, placePoint } from '../src/model.mjs'
+import { BLUEPRINT_FORMAT, createBlueprint, validateBlueprint, TrackHistory, placePoint, syncTrackSegments } from '../src/model.mjs'
 
 test('new blueprints have independent nested state and validate without aliasing', () => {
     const first = createBlueprint(), second = createBlueprint()
@@ -27,7 +27,7 @@ const invalid = [
     ['nonfinite viewport', value => { value.viewport.width = Infinity }],
     ['numeric string viewport', value => { value.viewport.width = '1200' }],
     ['missing settings', value => { delete value.settings }],
-    ...['closed', 'smooth', 'snap', 'grid'].map(key => [`nonboolean ${key}`, value => { value.settings[key] = 1 }]),
+    ...['closed', 'snap', 'grid'].map(key => [`nonboolean ${key}`, value => { value.settings[key] = 1 }]),
     ...[4, 201, NaN, Infinity, '40'].map(size => [`grid size ${size}`, value => { value.settings.gridSize = size }]),
     ['points type', value => { value.points = {} }],
     ['point limit', value => { value.points = Array.from({ length: 10001 }, (_, id) => ({ id: String(id), x: 0, y: 0 })) }],
@@ -52,6 +52,7 @@ test('validation accepts documented numeric limits, fractional grid and coordina
     value.viewport = { width: 100, height: 10000 }
     value.settings.gridSize = 5
     value.points = Array.from({ length: 10000 }, (_, id) => ({ id: String(id), x: -100000, y: 100000 }))
+    syncTrackSegments(value)
     assert.deepEqual(validateBlueprint(value), value)
     value.settings.gridSize = 200
     assert.equal(validateBlueprint(value).settings.gridSize, 200)

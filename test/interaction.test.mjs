@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createBlueprint } from '../src/model.mjs'
+import { createBlueprint, syncTrackSegments } from '../src/model.mjs'
 import { pointsInBox, moveTrackSelection, zoomTrackCamera, fitTrackCamera } from '../src/interaction.mjs'
 
 function near(actual, expected) {
@@ -14,7 +14,7 @@ function model() {
     value.viewport = { width: 300, height: 200 }
     value.settings.snap = false
     value.points = [{ id: 'a', x: 23, y: 77 }, { id: 'b', x: 87, y: 113 }, { id: 'c', x: 150, y: 80 }]
-    return value
+    return syncTrackSegments(value)
 }
 function translation(value, ids, delta, dx, dy) {
     const before = structuredClone(value)

@@ -35,6 +35,13 @@ export function updateTrackViewport(svg, camera) {
         point.setAttribute('r', 9 / scale)
         point.setAttribute('stroke-width', 3 / scale)
     }
+    for (const handle of svg.querySelectorAll('[data-element="segment-overlay"] circle')) {
+        handle.setAttribute('r', 7 / scale)
+        handle.setAttribute('stroke-width', 2 / scale)
+    }
+    for (const line of svg.querySelectorAll('[data-element="segment-overlay"] line')) line.setAttribute('stroke-width', 1.5 / scale)
+    const highlight = svg.querySelector('[data-element="segment-highlight"]')
+    if (highlight) highlight.setAttribute('stroke-width', 3 / scale)
     const box = svg.querySelector('[data-element="selection-box"]')
     if (box) {
         box.setAttribute('stroke-width', 1.5 / scale)

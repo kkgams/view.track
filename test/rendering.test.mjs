@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createBlueprint, createRendering, validateRendering, validateBlueprint, TrackHistory } from '../src/model.mjs'
+import { createBlueprint, createRendering, validateRendering, validateBlueprint, TrackHistory, syncTrackSegments } from '../src/model.mjs'
 import { trackPath } from '../src/geometry.mjs'
 import { renderTrack, exportBlueprint } from '../src/svg.mjs'
 
 function blueprint() {
     const model = createBlueprint()
     model.points = [{ id: 'a', x: 40, y: 80 }, { id: 'b', x: 300, y: 120 }, { id: 'c', x: 180, y: 360 }]
-    return model
+    return syncTrackSegments(model)
 }
 
 // Inspect serialization only, without substituting a mock DOM/XML parser.
@@ -72,18 +72,11 @@ for (const dash of ['', '4 6', '1.5,2.25 0', '0 1000']) test(`centerline support
     else assert.equal(Object.hasOwn(uses[3], 'stroke-dasharray'), false)
 })
 
-test('legacy version 1 models missing rendering upgrade to isolated simple styling', () => {
-    const legacy = blueprint()
-    delete legacy.rendering
-    const checked = validateBlueprint(legacy)
-    assert.deepEqual(checked.rendering, createRendering('centerline'))
-    assert.equal(Object.hasOwn(legacy, 'rendering'), false)
-    const exported = exportBlueprint(legacy)
-    assert.deepEqual(metadataJson(exported), checked)
-    assert.equal(elements(exported, 'use').length, 1)
-    checked.rendering.roadColor = '#123456'
-    assert.equal(validateBlueprint(legacy).rendering.roadColor, '#454b55')
-    assert.equal(createBlueprint().rendering.mode, 'road')
+test('rendering is required blueprint data', () => {
+    const model = blueprint()
+    delete model.rendering
+    assert.throws(() => validateBlueprint(model), /Invalid blueprint: rendering/)
+    assert.throws(() => exportBlueprint(model), /Invalid blueprint: rendering/)
 })
 
 const invalidRendering = [
