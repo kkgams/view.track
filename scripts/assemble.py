@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
-HELPERS = ("src/model.mjs", "src/geometry.mjs", "src/svg.mjs")
+HELPERS = ("src/model.mjs", "src/geometry.mjs", "src/svg.mjs", "src/interaction.mjs")
 parts = []
 for name in HELPERS:
     source = (ROOT / name).read_text()

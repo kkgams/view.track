@@ -13,10 +13,15 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 
 | Control | Action |
 | --- | --- |
-| Click empty canvas | Append a point |
-| Drag a point | Move it; one undo step per drag |
-| Click a point, then Delete point | Remove that point |
-| Insert point, then click near a segment | Insert between its endpoints, including the closing segment |
+| Draw points (D), click empty canvas | Append a point |
+| Select points (V), click a point | Select it without creating points |
+| Select points, drag empty space | Box-select points in either direction; Shift adds to the selection |
+| Shift-click a point | Add or remove it from the selection |
+| Drag a selected point | Move the whole selection together; one undo step per drag |
+| Delete selected points | Remove the selected points together |
+| Insert point (I), click near a segment | Insert between its endpoints, including the closing segment |
+| Pan (H), drag | Move the view without editing points |
+| Zoom in / Fit track / Zoom out | Change the view scale or fit the full track and its road stroke |
 | Closed loop / Smooth curves | Choose a closed circuit or open route; curves or straight lines |
 | Show grid / Snap to grid / Grid size | Configure the grid independently of curve generation |
 | Undo / Redo | Restore edits, settings and opened documents; keeps the latest 100 edits |
@@ -26,15 +31,34 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 | Open SVG | Reopen an SVG saved by this editor using the GAMS file chooser |
 | Download SVG | Browser download of the same editable SVG, without changing the current save path |
 
-With the SVG focused, Delete/Backspace deletes the selected point,
-Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redoes, Ctrl/Cmd+S saves,
-and Escape cancels a drag or exits insertion mode. Settings and the track name
-are undoable. Opening another document is also undoable and restores the
-corresponding save destination when undone.
+The header uses Host Material Symbol buttons, grouped as file actions, point
+tools, edit history and view controls. The active tool is highlighted and has
+`aria-pressed="true"`; hover tips identify each icon.
+
+With the SVG focused, D/V/I/H switches tools, Ctrl/Cmd+A selects all points,
+Delete/Backspace deletes the selection, Ctrl/Cmd+Z undoes,
+Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redoes, and Ctrl/Cmd+S saves. Escape cancels an
+active drag or clears the selection. Settings and the track name are undoable.
+Opening another document is also undoable and restores the corresponding save
+destination when undone.
+
+Hold Space and drag to pan temporarily without switching tools; middle-button
+drag also pans. The wheel/trackpad pans normally, while Ctrl/Cmd+wheel zooms
+around the pointer, matching the canvas Views. Zoom ranges from 2% to 6400% of
+the initial document view. Opening an SVG fits its track automatically. Selection,
+tool choice, pan and zoom are session-only: they do not dirty the document,
+enter undo history, or change the exported SVG. Preview mode still allows
+navigation but not point editing.
+
+Group movement applies one shared translation so point spacing is preserved.
+Snapping rounds that translation to grid increments, rather than snapping each
+point separately. Movement is clamped as a group to the document edges when the
+selection fits inside the document; oversized imported selections retain their
+relative geometry. Point handles keep a constant on-screen size while zooming.
 
 The drawing area defaults to 1200 × 800 units. Grid sizes range from 5 to 200.
-Snapping rounds new, moved and inserted points; toggling it does not move existing
-points. Smooth curves use uniform Catmull–Rom converted to cubic Béziers, with
+Snapping rounds new and inserted points, and quantizes selection movement;
+toggling it does not move existing points. Smooth curves use uniform Catmull–Rom converted to cubic Béziers, with
 no manual handles or road geometry. Coincident points are permitted. With fewer
 than three points, a closed route is displayed as an open segment.
 
@@ -119,7 +143,7 @@ notices remain under `tools/gams-release-notices/`.
 
 | Component | Source → ZIP entry |
 | --- | --- |
-| `view-track` | `src/views/view-track.js` + `src/{model,geometry,svg}.mjs` → `views/view-track.js` |
+| `view-track` | `src/views/view-track.js` + `src/{model,geometry,svg,interaction}.mjs` → `views/view-track.js` |
 
 The ZIP contains the assembled View, README and Apache-2.0 license. Register
 `views/view-track.js` as `view-track` in `ui.views`. Pin a published release URL
@@ -132,5 +156,6 @@ v0.2.0, `view.files` v1.0.0 and `theme.gams` v1.0.2. File chooser Views select
 their entries from the existing `view.files-1.0.0.zip` release. The editor uses
 `fs/fs::read-text`, `fs/fs::write-text` and `ui.popup.open`, and registers through
 the Host's `/util/view-plugin.js`. Optional `data-source` selects an initial SVG.
-Host-dispatched open, save, saveAs, undo, redo and deleteSelected actions share
-the toolbar's operation guard.
+Host-dispatched open, save, saveAs, undo, redo, deleteSelected, clearSelection,
+zoomIn, zoomOut and zoomFit actions share the toolbar's operation guard. The
+standard tool_1 through tool_4 actions select Draw, Select, Insert and Pan.

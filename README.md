@@ -3,8 +3,9 @@
 An SVG track blueprint editor for [GAMS](https://github.com/kkgams/gams).
 Original work by [kkgams](https://github.com/kkgams), licensed under [Apache-2.0](LICENSE).
 
-Click to add ordered points, drag to reshape, or insert points on existing
-segments. Toggle smooth/straight, closed/open, grid and snapping. Undo/redo,
+Use the grouped icon toolbar to Draw, Select, Insert or Pan. Shift-click or
+box-select points and drag them together. Wheel to pan, Ctrl/Cmd+wheel to zoom,
+or use the zoom/fit buttons. Toggle smooth/straight, closed/open, grid and snapping. Undo/redo,
 clean preview and GAMS save/load are included. Choose a simple centerline or a
 layered road with configurable asphalt, shoulders, outline and center markings.
 Appearance is undoable and saved with the blueprint. Saved SVGs embed versioned editor

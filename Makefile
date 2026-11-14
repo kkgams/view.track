@@ -20,7 +20,7 @@ export TMPDIR := $(abspath build.nosync/tmp)
 export XDG_CACHE_HOME := $(abspath build.nosync/cache)
 export PYTHONPYCACHEPREFIX := $(abspath build.nosync/pycache)
 
-SOURCES := src/model.mjs src/geometry.mjs src/svg.mjs src/views/view-track.js
+SOURCES := src/model.mjs src/geometry.mjs src/svg.mjs src/interaction.mjs src/views/view-track.js
 
 .PHONY: build test package open clean docs serve-docs validate-docs
 build: build.nosync/views/view-track.js

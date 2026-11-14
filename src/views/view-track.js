@@ -6,13 +6,18 @@ export class ViewTrack extends HTMLElement {
         super()
         const model = createBlueprint()
         this.history = new TrackHistory(model, { path: '', saved: JSON.stringify(model) })
-        this.selected = null
+        this.selected = new Set()
         this.preview = false
-        this.insertMode = false
+        this.tool = 'draw'
+        this.spacePressed = false
+        this.camera = { x: 0, y: 0, width: model.viewport.width, height: model.viewport.height }
         this.busy = false
         this.drag = null
         this.controls = []
         this.centerlineId = `track-centerline-${crypto.randomUUID()}`
+        this.resizeObserver = new ResizeObserver(entries => {
+            if (this.isConnected && entries.some(entry => entry.contentRect.width > 0 && entry.contentRect.height > 0)) this.render()
+        })
     }
 
     get path() { return this.history.context.path }
@@ -24,7 +29,7 @@ export class ViewTrack extends HTMLElement {
         const initialSource = this.getAttribute('data-source')
         this.style.display = 'contents'
         this.abort = new AbortController()
-        this.innerHTML = `<svg xmlns="${SVG_NS}" width="100%" height="100%" viewBox="0 0 1200 800" tabindex="0" role="img" aria-label="Track editor. Click to add points; drag to move; use Insert point then click a segment."></svg>
+        this.innerHTML = `<svg xmlns="${SVG_NS}" width="100%" height="100%" viewBox="0 0 1200 800" tabindex="0" role="img" aria-label="Track editor. Draw points, select or box-select points, insert points, or pan. Shift-click extends selection. Hold Space to pan."></svg>
 <aside><form autocomplete="off">
 <fieldset><legend>Blueprint</legend><label>Name <input data-field="name" type="text" maxlength="1000" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
 <label><input data-field="closed" type="checkbox"> Closed loop</label>
@@ -61,19 +66,26 @@ export class ViewTrack extends HTMLElement {
         listen('pointercancel', 'pointerCancel')
         listen('lostpointercapture', 'pointerCancel')
         listen('keydown', 'keyDown')
+        listen('keyup', 'keyUp')
+        listen('blur', 'loseFocus')
+        this.svg.addEventListener('wheel', event => this.wheel(event), { passive: false, signal: this.abort.signal })
+        window.addEventListener('blur', () => this.loseFocus(), { signal: this.abort.signal })
         const methods = {}
-        for (const method of ['open', 'save', 'saveAs', 'undo', 'redo', 'deleteSelected']) {
+        for (const method of ['open', 'save', 'saveAs', 'undo', 'redo', 'deleteSelected', 'clearSelection', 'zoomIn', 'zoomOut', 'zoomFit']) {
             methods[method] = async input => viewOk(await this.perform(() => this[method](input)))
         }
+        for (const [index, tool] of ['draw', 'select', 'insert', 'pan'].entries()) methods[`tool_${index + 1}`] = () => viewOk(this.setTool(tool))
         registerViewPlugin(this, methods)
         const source = this.getAttribute('data-source') || initialSource
         this.render()
+        this.resizeObserver.observe(this.svg)
         if (source && source !== this.path) void this.perform(() => this.open(source))
     }
 
     disconnectedCallback() {
         this.cancelDrag()
         this.abort.abort()
+        this.resizeObserver.disconnect()
         for (const group of this.controls) group.remove()
         this.controls = []
         void unregisterViewPlugin(this)
@@ -81,10 +93,10 @@ export class ViewTrack extends HTMLElement {
 
     mountControls() {
         const groups = [
-            ['file-actions', [['open', 'Open SVG'], ['save', 'Save'], ['saveAs', 'Save as'], ['download', 'Download SVG']]],
-            ['tool-actions', [['insert', 'Insert point'], ['deleteSelected', 'Delete point'], ['clear', 'Clear']]],
-            ['edit-actions', [['undo', 'Undo'], ['redo', 'Redo']]],
-            ['view-actions', [['preview', 'Preview']]],
+            ['file-actions', [['open', 'Open SVG', 'folder_open'], ['save', 'Save', 'save'], ['saveAs', 'Save as', 'save_as'], ['download', 'Download SVG', 'download']]],
+            ['tool-actions', [['draw', 'Draw points', 'edit', 'D'], ['select', 'Select points', 'select_all', 'V'], ['insert', 'Insert point', 'add', 'I'], ['pan', 'Pan', 'pan_tool', 'H'], ['deleteSelected', 'Delete selected points', 'delete'], ['clear', 'Clear track', 'delete_sweep']]],
+            ['edit-actions', [['undo', 'Undo', 'undo'], ['redo', 'Redo', 'redo']]],
+            ['view-actions', [['zoomIn', 'Zoom in', 'zoom_in'], ['zoomFit', 'Fit track', 'fit_screen'], ['zoomOut', 'Zoom out', 'zoom_out'], ['preview', 'Preview', 'visibility']]],
         ]
         const toolbar = document.createElement('div')
         toolbar.slot = 'header-controls'
@@ -92,13 +104,24 @@ export class ViewTrack extends HTMLElement {
             const group = document.createElement('div')
             group.setAttribute('role', 'buttongroup')
             group.dataset.element = name
-            for (const [action, label] of actions) {
+            for (const [action, label, symbol, shortcut] of actions) {
                 const button = document.createElement('button')
                 button.type = 'button'
-                button.textContent = label
+                button.setAttribute('aria-label', label)
                 button.dataset.action = action
+                const icon = document.createElement('i')
+                icon.setAttribute('aria-hidden', 'true')
+                icon.textContent = symbol
+                button.append(icon)
+                if (action === 'save') button.classList.add('accent')
+                if (action === 'deleteSelected' || action === 'clear') button.classList.add('danger')
+                button.addEventListener('pointerenter', () => {
+                    const rect = button.getBoundingClientRect()
+                    void runtime.call('ui.tooltip.tip', { content: shortcut ? `${label} (${shortcut})` : label,
+                        anchor: { kind: 'aabb', x: rect.x, y: rect.y, width: rect.width, height: rect.height } }).then(result => unwrap(result))
+                }, { signal: this.abort.signal })
                 button.addEventListener('click', () => {
-                    if (action === 'insert') { this.cancelDrag(); this.insertMode = !this.insertMode; this.render(); return }
+                    if (['draw', 'select', 'insert', 'pan'].includes(action)) { this.setTool(action); return }
                     if (action === 'preview') { this.cancelDrag(); this.preview = !this.preview; this.render(); return }
                     void this.perform(() => this[action]())
                 }, { signal: this.abort.signal })
@@ -150,31 +173,42 @@ export class ViewTrack extends HTMLElement {
             field.disabled = this.busy || (this.preview && field.dataset.section !== 'rendering')
             const section = field.dataset.section === 'rendering' ? model.rendering : model.settings
             const value = field.dataset.field === 'name' ? model.name : section[field.dataset.field]
+            // Camera/resize renders must not overwrite an inspector edit awaiting change/blur.
+            if (field === document.activeElement && !this.busy) continue
             if (field.type === 'checkbox') field.checked = value
             else field.value = value
         }
         for (const group of this.controls) for (const button of group.querySelectorAll('button')) {
             const action = button.dataset.action
-            button.disabled = this.busy || (this.preview && ['insert', 'deleteSelected', 'clear'].includes(action)) ||
-                (action === 'deleteSelected' && this.selected === null) ||
+            button.disabled = this.busy || (this.preview && ['draw', 'select', 'insert', 'deleteSelected', 'clear'].includes(action)) ||
+                (action === 'deleteSelected' && this.selected.size === 0) ||
                 (action === 'undo' && !this.history.past.length) || (action === 'redo' && !this.history.future.length)
-            if (action === 'preview' || action === 'insert') button.setAttribute('aria-pressed', String(action === 'preview' ? this.preview : this.insertMode))
+            if (['draw', 'select', 'insert', 'pan'].includes(action)) {
+                button.setAttribute('aria-pressed', String(action === this.tool))
+                button.classList.toggle('accent', action === this.tool)
+            }
+            if (action === 'preview') button.setAttribute('aria-pressed', String(this.preview))
         }
     }
 
     render() {
-        const model = this.drag ? this.drag.draft : this.history.model
+        const model = this.drag && this.drag.kind === 'move' ? this.drag.draft : this.history.model
         if (this.path) this.setAttribute('data-source', this.path)
         else this.removeAttribute('data-source')
-        if (!model.points.some(point => point.id === this.selected)) this.selected = null
-        this.svg.setAttribute('viewBox', `0 0 ${model.viewport.width} ${model.viewport.height}`)
+        const ids = new Set(model.points.map(point => point.id))
+        this.selected = new Set([...this.selected].filter(id => ids.has(id)))
+        const camera = this.camera
+        this.svg.setAttribute('viewBox', `${camera.x} ${camera.y} ${camera.width} ${camera.height}`)
+        this.svg.setAttribute('cursor', this.drag && this.drag.kind === 'pan' ? 'grabbing' : this.tool === 'pan' || this.spacePressed ? 'grab' : this.tool === 'select' ? 'default' : 'crosshair')
+        const scale = this.screenScale()
         // Only generated, validated values enter this markup; imported SVG never does.
         const grid = []
         if (!this.preview && model.settings.grid) {
             for (let x = 0; x <= model.viewport.width; x += model.settings.gridSize) grid.push(`M ${x} 0 V ${model.viewport.height}`)
             for (let y = 0; y <= model.viewport.height; y += model.settings.gridSize) grid.push(`M 0 ${y} H ${model.viewport.width}`)
         }
-        this.svg.innerHTML = `<rect width="${model.viewport.width}" height="${model.viewport.height}" fill="${this.preview ? '#ffffff' : '#121c28'}"/>
+        this.svg.innerHTML = `<rect x="${camera.x}" y="${camera.y}" width="${camera.width}" height="${camera.height}" fill="${this.preview ? '#ffffff' : '#121c28'}"/>
+<rect width="${model.viewport.width}" height="${model.viewport.height}" fill="none" stroke="${this.preview ? '#ffffff' : '#344457'}" stroke-width="${1 / scale}"/>
 <path d="${grid.join(' ')}" stroke="#344457" stroke-width="1" fill="none" pointer-events="none"/>
 ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
 <g data-element="points"></g>`
@@ -182,14 +216,29 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
             const layer = this.svg.querySelector('[data-element="points"]')
             model.points.forEach((point, index) => {
                 const circle = document.createElementNS(SVG_NS, 'circle')
-                for (const [name, value] of Object.entries({ cx: point.x, cy: point.y, r: 9, fill: point.id === this.selected ? '#ffcf66' : '#ffffff', stroke: '#121c28', 'stroke-width': 3, 'data-id': point.id, 'aria-label': `Point ${index + 1}` })) circle.setAttribute(name, value)
+                for (const [name, value] of Object.entries({ cx: point.x, cy: point.y, r: 9 / scale, fill: this.selected.has(point.id) ? '#ffcf66' : '#ffffff', stroke: '#121c28', 'stroke-width': 3 / scale, 'data-id': point.id, 'aria-label': `Point ${index + 1}` })) circle.setAttribute(name, value)
                 layer.append(circle)
             })
         }
+        if (this.drag && this.drag.kind === 'box') {
+            const { start, end } = this.drag
+            const box = document.createElementNS(SVG_NS, 'rect')
+            for (const [name, value] of Object.entries({ x: Math.min(start.x, end.x), y: Math.min(start.y, end.y),
+                width: Math.abs(start.x - end.x), height: Math.abs(start.y - end.y), fill: '#91e5ff', 'fill-opacity': 0.12,
+                stroke: '#91e5ff', 'stroke-width': 1.5 / scale, 'stroke-dasharray': `${4 / scale} ${4 / scale}`, 'pointer-events': 'none' })) box.setAttribute(name, value)
+            this.svg.append(box)
+        }
         this.updateControls()
         const dirty = JSON.stringify(this.history.model) !== this.saved
+        const hints = { draw: 'Click to add · Drag selected points to move', select: 'Click or drag a box to select · Shift adds/removes', insert: 'Click a segment to insert a point', pan: 'Drag to pan' }
         this.status.className = ''
-        this.status.textContent = `${dirty ? 'Unsaved · ' : ''}${this.path || 'New blueprint'} · ${model.points.length} points · ${this.preview ? 'Preview' : this.insertMode ? 'Click a segment to insert a point' : 'Click to add · Drag to move · Delete to remove · Ctrl/Cmd+Z to undo'}`
+        this.status.textContent = `${dirty ? 'Unsaved · ' : ''}${this.path || 'New blueprint'} · ${model.points.length} points · ${this.selected.size} selected · ${Math.round(model.viewport.width / camera.width * 100)}% · ${this.preview ? 'Preview' : hints[this.tool]}`
+    }
+
+    screenScale() {
+        const matrix = this.svg.getScreenCTM()
+        if (!matrix || matrix.a <= 0) throw new Error('Track SVG has no screen transform')
+        return matrix.a
     }
 
     canvasPoint(event) {
@@ -198,56 +247,132 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         return new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse())
     }
 
-    pointerDown(event) {
-        if (event.button !== 0 || this.busy || this.preview || this.drag) return
-        const position = this.canvasPoint(event)
+    setTool(tool) {
+        if (!['draw', 'select', 'insert', 'pan'].includes(tool)) throw new Error(`Unknown track tool: ${tool}`)
+        if (this.busy || (this.preview && tool !== 'pan')) return false
+        this.cancelDrag()
+        this.tool = tool
+        this.render()
+        return true
+    }
+
+    resetCamera() {
+        this.camera = fitTrackCamera([], this.history.model.viewport)
+    }
+
+    zoomAt(anchor, factor) {
+        this.cancelDrag()
+        this.camera = zoomTrackCamera(this.camera, this.history.model.viewport, anchor, factor)
+        this.render()
+    }
+    zoomIn() { this.zoomAt({ x: this.camera.x + this.camera.width / 2, y: this.camera.y + this.camera.height / 2 }, 1.2) }
+    zoomOut() { this.zoomAt({ x: this.camera.x + this.camera.width / 2, y: this.camera.y + this.camera.height / 2 }, 0.8) }
+    zoomFit() {
+        this.cancelDrag()
         const model = this.history.model
-        if (position.x < 0 || position.y < 0 || position.x > model.viewport.width || position.y > model.viewport.height) return
+        const bounds = [...model.points, ...trackSegments(model).flatMap(segment => [segment.c, segment.d])]
+        const style = model.rendering
+        const stroke = style.mode === 'road' ? style.roadWidth + 2 * (style.edgeWidth + style.outlineWidth) : 12
+        this.camera = fitTrackCamera(bounds, model.viewport, 40 + stroke / 2)
+        this.render()
+    }
+
+    wheel(event) {
+        event.preventDefault()
+        if (this.busy || this.drag) return
+        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.svg.getBoundingClientRect().height : 1
+        if ((event.ctrlKey || event.metaKey) && event.deltaY !== 0) {
+            this.zoomAt(this.canvasPoint(event), event.deltaY < 0 ? 1.1 : 0.9)
+        } else {
+            const scale = this.screenScale()
+            this.camera.x += event.deltaX * unit / scale
+            this.camera.y += event.deltaY * unit / scale
+            this.render()
+        }
+    }
+
+    pointerDown(event) {
+        if (this.busy || this.drag || ![0, 1].includes(event.button)) return
+        const pan = event.button === 1 || this.tool === 'pan' || this.spacePressed
+        if (this.preview && !pan) return
         event.preventDefault()
         this.svg.focus()
-        const id = event.target.getAttribute('data-id')
-        if (id) {
-            this.selected = id
-            this.drag = { pointerId: event.pointerId, start: position, draft: structuredClone(model), moved: false }
-            this.svg.setPointerCapture(event.pointerId)
-            this.render()
-            return
+        const position = this.canvasPoint(event)
+        const model = this.history.model
+        if (pan) {
+            this.drag = { kind: 'pan', pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY,
+                camera: { ...this.camera }, scale: this.screenScale(), temporary: this.spacePressed && this.tool !== 'pan' }
+        } else {
+            const id = event.target.getAttribute('data-id')
+            const beforeSelection = new Set(this.selected)
+            if (id) {
+                if (event.shiftKey) {
+                    if (this.selected.has(id)) { this.selected.delete(id); this.render(); return }
+                    this.selected.add(id)
+                } else if (!this.selected.has(id)) this.selected = new Set([id])
+                this.drag = { kind: 'move', pointerId: event.pointerId, start: position, scale: this.screenScale(),
+                    draft: structuredClone(model), ids: new Set(this.selected), beforeSelection, moved: false }
+            } else if (this.tool === 'select') {
+                const base = event.shiftKey ? new Set(this.selected) : new Set()
+                this.selected = new Set(base)
+                this.drag = { kind: 'box', pointerId: event.pointerId, start: position, end: position, base, beforeSelection }
+            } else {
+                if (position.x < 0 || position.y < 0 || position.x > model.viewport.width || position.y > model.viewport.height) return
+                const next = structuredClone(model)
+                let index = next.points.length
+                let point = position
+                if (this.tool === 'insert') {
+                    const hit = nearestSegment(model, position)
+                    if (!hit || hit.distance * this.screenScale() > 20) return
+                    index = hit.index + 1
+                    point = hit
+                }
+                const added = { id: crypto.randomUUID(), ...placePoint(model, point.x, point.y) }
+                next.points.splice(index, 0, added)
+                this.selected = new Set([added.id])
+                this.history.commit(next)
+                this.render()
+                return
+            }
         }
-        const next = structuredClone(model)
-        let index = next.points.length
-        let point = position
-        if (this.insertMode) {
-            const hit = nearestSegment(model, position)
-            if (!hit) return
-            const scale = this.svg.getScreenCTM()
-            if (hit.distance * Math.hypot(scale.a, scale.b) > 20) return
-            index = hit.index + 1
-            point = hit
-        }
-        const added = { id: crypto.randomUUID(), ...placePoint(model, point.x, point.y) }
-        next.points.splice(index, 0, added)
-        this.selected = added.id
-        this.history.commit(next)
+        this.svg.setPointerCapture(event.pointerId)
         this.render()
     }
 
     pointerMove(event) {
         if (!this.drag || event.pointerId !== this.drag.pointerId) return
-        const position = this.canvasPoint(event)
-        if (!this.drag.moved && Math.hypot(position.x - this.drag.start.x, position.y - this.drag.start.y) < 2) return
-        this.drag.moved = true
-        const point = this.drag.draft.points.find(point => point.id === this.selected)
-        Object.assign(point, placePoint(this.drag.draft, position.x, position.y))
+        const drag = this.drag
+        if (drag.kind === 'pan') {
+            this.camera = { ...drag.camera, x: drag.camera.x - (event.clientX - drag.clientX) / drag.scale,
+                y: drag.camera.y - (event.clientY - drag.clientY) / drag.scale }
+        } else {
+            const position = this.canvasPoint(event)
+            if (drag.kind === 'box') {
+                drag.end = position
+                this.selected = pointsInBox(this.history.model.points, drag.start, position, drag.base)
+            } else {
+                const delta = { x: position.x - drag.start.x, y: position.y - drag.start.y }
+                if (!drag.moved && Math.hypot(delta.x, delta.y) * drag.scale < 2) return
+                drag.moved = true
+                // Every event translates the original points, not the previous frame's snapped draft.
+                drag.draft = moveTrackSelection(this.history.model, drag.ids, delta)
+            }
+        }
         this.render()
+    }
+
+    releaseDrag() {
+        const drag = this.drag
+        this.drag = null
+        if (drag && this.svg.hasPointerCapture(drag.pointerId)) this.svg.releasePointerCapture(drag.pointerId)
+        return drag
     }
 
     pointerUp(event) {
         if (!this.drag || event.pointerId !== this.drag.pointerId) return
         this.pointerMove(event)
-        const drag = this.drag
-        this.drag = null
-        if (this.svg.hasPointerCapture(event.pointerId)) this.svg.releasePointerCapture(event.pointerId)
-        this.history.commit(drag.draft)
+        const drag = this.releaseDrag()
+        if (drag.kind === 'move') this.history.commit(drag.draft)
         this.render()
     }
 
@@ -256,46 +381,90 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
     }
 
     cancelDrag() {
-        if (!this.drag) return
-        const id = this.drag.pointerId
-        this.drag = null
-        if (this.svg.hasPointerCapture(id)) this.svg.releasePointerCapture(id)
+        const drag = this.releaseDrag()
+        if (!drag) return
+        if (drag.kind === 'pan') this.camera = drag.camera
+        else this.selected = drag.beforeSelection
+    }
+
+    loseFocus() {
+        this.spacePressed = false
+        this.cancelDrag()
+        this.render()
+    }
+
+    keyUp(event) {
+        if (event.key !== ' ') return
+        event.preventDefault()
+        this.spacePressed = false
+        if (this.drag && this.drag.kind === 'pan' && this.drag.temporary) this.releaseDrag()
+        this.render()
     }
 
     keyDown(event) {
         if (this.busy) return
         const mod = event.ctrlKey || event.metaKey
-        if (mod && ['z', 'y', 's'].includes(event.key.toLowerCase())) {
+        const key = event.key.toLowerCase()
+        if (event.key === ' ') {
             event.preventDefault()
-            const key = event.key.toLowerCase()
+            this.spacePressed = true
+            this.render()
+        } else if (mod && ['z', 'y', 's'].includes(key)) {
+            event.preventDefault()
             void this.perform(() => key === 's' ? this.save() : key === 'y' || event.shiftKey ? this.redo() : this.undo())
+        } else if (mod && key === 'a' && !this.preview) {
+            event.preventDefault()
+            this.cancelDrag()
+            this.selected = new Set(this.history.model.points.map(point => point.id))
+            this.render()
+        } else if (!mod && !event.altKey && ['d', 'v', 'i', 'h'].includes(key)) {
+            event.preventDefault()
+            this.setTool({ d: 'draw', v: 'select', i: 'insert', h: 'pan' }[key])
         } else if (!this.preview && ['Delete', 'Backspace'].includes(event.key)) {
-            event.preventDefault(); this.cancelDrag(); this.deleteSelected(); this.render()
+            event.preventDefault(); this.deleteSelected()
         } else if (event.key === 'Escape') {
-            this.cancelDrag(); this.selected = null; this.insertMode = false; this.render()
+            if (this.drag) this.cancelDrag()
+            else this.selected.clear()
+            this.spacePressed = false
+            this.render()
         }
     }
 
+    clearSelection() { this.cancelDrag(); this.selected.clear(); this.render() }
     deleteSelected() {
         if (this.preview) return
         this.cancelDrag()
         const next = structuredClone(this.history.model)
-        next.points = next.points.filter(point => point.id !== this.selected)
+        next.points = next.points.filter(point => !this.selected.has(point.id))
         this.history.commit(next)
-        this.selected = null
+        this.selected.clear()
         this.render()
     }
     clear() {
         if (this.preview) return
+        this.cancelDrag()
         const next = structuredClone(this.history.model)
         next.points = []
         next.annotations = []
         this.history.commit(next)
-        this.selected = null
+        this.selected.clear()
+        this.resetCamera()
         this.render()
     }
-    undo() { this.cancelDrag(); this.history.undo(); this.render() }
-    redo() { this.cancelDrag(); this.history.redo(); this.render() }
+    undo() {
+        this.cancelDrag()
+        const context = this.history.context
+        this.history.undo()
+        if (context !== this.history.context) this.resetCamera()
+        this.render()
+    }
+    redo() {
+        this.cancelDrag()
+        const context = this.history.context
+        this.history.redo()
+        if (context !== this.history.context) this.resetCamera()
+        this.render()
+    }
 
     async choose(mode) {
         const result = unwrap(await runtime.call('ui.popup.open', { title: mode === 'chooser' ? 'Open track SVG' : 'Save track SVG', size: 'medium', tag: 'view-files',
@@ -318,8 +487,8 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         this.cancelDrag()
         // Opening is undoable, so an accidental open cannot discard a sketch.
         this.history.commit(model, { path, saved: JSON.stringify(model) })
-        this.selected = null
-        this.render()
+        this.selected.clear()
+        this.zoomFit()
         return true
     }
 
