@@ -288,8 +288,10 @@ export class ViewTrack extends HTMLElement {
                 const actions = document.createElement('td')
                 const remove = document.createElement('button')
                 remove.type = 'button'
-                remove.className = 'danger'
-                remove.textContent = 'Delete'
+                const icon = document.createElement('i')
+                icon.setAttribute('aria-hidden', 'true')
+                icon.textContent = 'delete'
+                remove.append(icon)
                 remove.addEventListener('click', () => this.deleteStyle(style.id), { signal: this.abort.signal })
                 actions.append(remove)
                 row.append(used, actions)
