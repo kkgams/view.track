@@ -1,0 +1,105 @@
+---
+title: Track blueprint editor
+status: reference
+---
+
+# Track blueprint editor
+
+A point-based SVG sketchbook for racing circuits, running inside GAMS.
+
+## Sketch a circuit
+
+Run `make open` on macOS Apple Silicon to open the local Project.
+
+| Control | Action |
+| --- | --- |
+| Click empty canvas | Append a point |
+| Drag a point | Move it; one undo step per drag |
+| Click a point, then Delete point | Remove that point |
+| Insert point, then click near a segment | Insert between its endpoints, including the closing segment |
+| Closed loop / Smooth curves | Choose a closed circuit or open route; curves or straight lines |
+| Show grid / Snap to grid / Grid size | Configure the grid independently of curve generation |
+| Undo / Redo | Restore edits, settings and opened documents; keeps the latest 100 edits |
+| Clear | Remove points and annotations; undo restores them |
+| Preview | Hide the grid and points, and disable shape editing |
+| Save / Save as | Write an editable SVG through GAMS filesystem APIs |
+| Open SVG | Reopen an SVG saved by this editor using the GAMS file chooser |
+| Download SVG | Browser download of the same editable SVG, without changing the current save path |
+
+With the SVG focused, Delete/Backspace deletes the selected point,
+Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redoes, Ctrl/Cmd+S saves,
+and Escape cancels a drag or exits insertion mode. Settings and the track name
+are undoable. Opening another document is also undoable and restores the
+corresponding save destination when undone.
+
+The drawing area defaults to 1200 × 800 units. Grid sizes range from 5 to 200.
+Snapping rounds new, moved and inserted points; toggling it does not move existing
+points. Smooth curves use uniform Catmull–Rom converted to cubic Béziers, with
+no manual handles or road geometry. Coincident points are permitted. With fewer
+than three points, a closed route is displayed as an open segment.
+
+SVG files have a white background and dark centerline, without editing overlays.
+Use them directly in browsers, webpages and wikis. Ordinary SVG drawings without
+this editor's metadata cannot be imported. Imported drawing markup is never
+mounted or executed.
+
+## Editable SVG format
+
+The SVG contains one direct child `<metadata id="gams-track-blueprint">` whose
+text is JSON. The visible path is generated from that JSON, never parsed back
+into points. The format is `gams.track-blueprint`, schema version `1`.
+
+| Field | Meaning |
+| --- | --- |
+| `format`, `version` | Format identity and schema version; unsupported versions are rejected |
+| `name` | Track name or identifier |
+| `viewport` | Width and height in blueprint units |
+| `settings` | `closed`, `smooth`, `snap`, `grid`, `gridSize` |
+| `points` | Ordered `{id, x, y}` records; IDs remain stable when points move |
+| `annotations` | Reserved array for later design stages; empty in newly created V1 blueprints |
+
+Unknown JSON fields on the document, points and annotations survive save/load
+and undo/redo. Later versions can associate conceptual elevation with point IDs
+and structural markers with route positions instead of screen coordinates.
+V1 does not edit, validate or remap those future annotations when points are
+inserted or deleted. Elevation, structures and 3D handoff are not implemented.
+Files are limited to 8 MiB of SVG text and 10,000 points. Invalid data is rejected
+before replacing the current document; a failed save does not mark it as saved.
+
+## Develop and install
+
+Requires Make, Python 3, Node.js 24+, Git, curl, zip, unzip and shasum. No npm
+packages or sibling checkouts are needed.
+
+| Command | Result |
+| --- | --- |
+| `make build` | Assemble `build.nosync/views/view-track.js` |
+| `make test` | Native Node tests and assembled JavaScript syntax check |
+| `make package` | Incremental `build.nosync/view.track.zip` and `SHA256SUMS` |
+| `make open` | Build and launch this checkout's `gams.json` in pinned GAMS v3.1.1 |
+| `make serve-docs DOCS_PORT=8083` | Independent wiki preview |
+| `make docs` / `make validate-docs` | Build / validate the wiki |
+| `make clean` | Remove `build.nosync/`, downloaded Host and Host notices only |
+
+Clean refuses tracked files and symlinks in deletion paths. Installed Units in
+`gams_modules/` and unrelated tools are preserved. Existing Host downloads are
+not updated implicitly; security checks are not bypassed. Accompanying Host
+notices remain under `tools/gams-release-notices/`.
+
+| Component | Source → ZIP entry |
+| --- | --- |
+| `view-track` | `src/views/view-track.js` + `src/{model,geometry,svg}.mjs` → `views/view-track.js` |
+
+The ZIP contains the assembled View, README and Apache-2.0 license. Register
+`views/view-track.js` as `view-track` in `ui.views`. Pin a published release URL
+with `#views/view-track.js`; no release is required for local development.
+The Host loads Views through blob URLs, so assembly removes helper-relative
+imports while retaining absolute Host imports.
+
+The local `gams.json` pins filesystem/layout plugins v0.2.0, six UI Services
+v0.2.0, `view.files` v1.0.0 and `theme.gams` v1.0.2. File chooser Views select
+their entries from the existing `view.files-1.0.0.zip` release. The editor uses
+`fs/fs::read-text`, `fs/fs::write-text` and `ui.popup.open`, and registers through
+the Host's `/util/view-plugin.js`. Optional `data-source` selects an initial SVG.
+Host-dispatched open, save, saveAs, undo, redo and deleteSelected actions share
+the toolbar's operation guard.

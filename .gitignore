@@ -1,0 +1,5 @@
+/build.nosync/
+/tools/gams.app/
+/tools/gams-release-notices/
+/gams_modules/
+.DS_Store
