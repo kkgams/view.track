@@ -19,7 +19,7 @@ Silicon and uses canonical local source with pinned released supporting Units.
 | `make build` | Assemble `build.nosync/views/view-track.js`. |
 | `make test` | Run native Node tests and check assembled JavaScript syntax. |
 | `make package` | Build incremental `build.nosync/view.track.zip` and `SHA256SUMS`. |
-| `make open` | Build and open local `gams.json` in pinned GAMS v3.1.1. |
+| `make open` | Build and open local `gams.json` in pinned GAMS v3.2.0. |
 | `make tools/gams.app` | Download the Host if absent, preserving accompanying notices. |
 | `make serve-docs DOCS_PORT=8083` | Preview the pinned wiki independently. |
 | `make docs` | Build `build.nosync/docs/`. |

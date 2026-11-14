@@ -21,7 +21,7 @@ packages or sibling checkouts are needed.
 | `make build` | Assemble `build.nosync/views/view-track.js` |
 | `make test` | Native Node tests and assembled JavaScript syntax check |
 | `make package` | Incremental `build.nosync/view.track.zip` and `SHA256SUMS` |
-| `make open` | Build and launch this checkout's `gams.json` in pinned GAMS v3.1.1 |
+| `make open` | Build and launch this checkout's `gams.json` in pinned GAMS v3.2.0 |
 | `make serve-docs DOCS_PORT=8083` | Independent wiki preview |
 | `make docs` | Build `build.nosync/docs/` |
 | `make validate-docs` | Validate the wiki |

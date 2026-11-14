@@ -12,7 +12,7 @@ WIKI_VERSION := v1.8.0
 WIKI_REPOSITORY := https://github.com/justgook/wiki
 WIKI_MAKEFILE := build.nosync/wiki-$(WIKI_VERSION).mk
 WIKI_ENGINE := $(abspath build.nosync/wiki-$(WIKI_VERSION))
-GAMS_VERSION := v3.1.1
+GAMS_VERSION := v3.2.0
 GAMS_ASSET := GAMS-macos-aarch64.zip
 GAMS_RELEASE := https://github.com/kkgams/gams/releases/download/$(GAMS_VERSION)
 
