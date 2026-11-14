@@ -24,7 +24,7 @@ function editor() {
     const view = Object.create(ViewTrack.prototype)
     Object.assign(view, {
         history: new model.TrackHistory(value, { path: '', saved: JSON.stringify(value) }),
-        selected: new Set(), selectedSegment: null, drag: null, busy: false, preview: false,
+        selected: new Set(), selectedSegment: null, selectedStyle: null, drag: null, busy: false, preview: false,
         tool: 'select', spacePressed: false, renders: 0,
         render() { this.renders++ }, screenScale() { return 1 },
         canvasPoint(event) { return { x: event.clientX, y: event.clientY } },
@@ -153,12 +153,14 @@ test('style table edits shared definitions and rejects invalid input atomically'
     let reports = 0
     const name = { value: 'Dirt', setCustomValidity() {}, reportValidity() { reports++ } }
     const color = { value: '#aa3300', setCustomValidity() {}, reportValidity() { reports++ } }
-    view.styleEditors = new Map([['asphalt', { name, color }]])
-    view.changeStyle('asphalt', name)
+    view.selectedStyle = 'asphalt'
+    view.styleName = name
+    view.styleColor = color
+    view.changeStyle(name)
     assert.equal(view.history.model.styles[0].name, 'Dirt')
     assert.equal(view.history.model.styles[0].roadColor, '#aa3300')
     color.value = 'red'
-    view.changeStyle('asphalt', color)
+    view.changeStyle(color)
     assert.equal(reports, 1)
     assert.equal(view.history.past.length, 1)
     assert.equal(view.history.model.styles[0].roadColor, '#aa3300')
@@ -166,4 +168,81 @@ test('style table edits shared definitions and rejects invalid input atomically'
     assert.deepEqual(view.history.model.styles, [])
     view.undo()
     assert.equal(view.history.model.styles[0].name, 'Dirt')
+})
+
+test('style row selection is session-only and busy guards preserve selection', () => {
+    const view = editor()
+    view.history.model.styles = [{ id: 'asphalt', name: 'Asphalt', roadColor: '#123456' }, { id: 'dirt', name: 'Dirt', roadColor: '#aa3300' }]
+    const before = structuredClone(view.history.model)
+    let focused = null
+    view.styleEditors = new Map(view.history.model.styles.map(style => [style.id, { row: { focus() { focused = style.id } } }]))
+    view.selectStyle('dirt', true)
+    assert.equal(view.selectedStyle, 'dirt')
+    assert.equal(focused, 'dirt')
+    assert.deepEqual(view.history.model, before)
+    assert.equal(view.history.past.length, 0)
+    view.busy = true
+    view.selectStyle('asphalt', true)
+    assert.equal(view.selectedStyle, 'dirt')
+    view.busy = false
+    assert.throws(() => view.selectStyle('missing'), /Missing road style/)
+})
+
+test('style rows support arrow, Home/End and activation keys without intercepting delete buttons', () => {
+    const view = editor()
+    view.history.model.styles = [{ id: 'asphalt', name: 'Asphalt', roadColor: '#123456' }, { id: 'dirt', name: 'Dirt', roadColor: '#aa3300' }]
+    view.styleEditors = new Map(view.history.model.styles.map(style => [style.id, { row: { focus() {} } }]))
+    const press = (id, key, button = false) => {
+        let handled = false
+        view.styleKeyDown({ key, preventDefault() { handled = true }, stopPropagation() {},
+            target: { closest(selector) { return selector === 'button' ? button : { dataset: { styleId: id } } } } })
+        return handled
+    }
+    assert.equal(press('asphalt', 'ArrowDown'), true)
+    assert.equal(view.selectedStyle, 'dirt')
+    press('dirt', 'Home')
+    assert.equal(view.selectedStyle, 'asphalt')
+    press('asphalt', 'End')
+    assert.equal(view.selectedStyle, 'dirt')
+    press('dirt', 'ArrowDown')
+    assert.equal(view.selectedStyle, 'dirt')
+    press('dirt', 'ArrowUp')
+    assert.equal(view.selectedStyle, 'asphalt')
+    press('dirt', 'Enter')
+    assert.equal(view.selectedStyle, 'dirt')
+    press('asphalt', ' ')
+    assert.equal(view.selectedStyle, 'asphalt')
+    assert.equal(press('dirt', 'Enter', true), false)
+    assert.equal(view.selectedStyle, 'asphalt')
+    assert.equal(press('dirt', 'x'), false)
+    assert.equal(view.history.past.length, 0)
+})
+
+test('adding a style selects it and focuses its properties; deleting selects the next row', () => {
+    const view = editor()
+    let focused = false
+    view.styleName = { focus() { focused = true } }
+    view.addStyle()
+    assert.equal(view.selectedStyle, view.history.model.styles[0].id)
+    assert.equal(focused, true)
+    const first = view.selectedStyle
+    view.addStyle()
+    const second = view.selectedStyle
+    assert.notEqual(first, second)
+    view.deleteStyle(second)
+    assert.equal(view.selectedStyle, first)
+    view.deleteStyle(first)
+    assert.equal(view.selectedStyle, null)
+})
+
+test('properties do not edit without selection or while busy', () => {
+    const view = editor()
+    view.styleName = { value: 'Dirt' }
+    view.styleColor = { value: '#aa3300' }
+    view.changeStyle(view.styleColor)
+    assert.equal(view.history.past.length, 0)
+    view.busy = true
+    view.selectedStyle = 'missing'
+    view.changeStyle(view.styleColor)
+    assert.equal(view.history.past.length, 0)
 })

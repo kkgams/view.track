@@ -65,7 +65,8 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 | Zoom in / Fit track / Zoom out | Change the view scale or fit the full track and its road stroke |
 | Closed loop | Choose a closed circuit or open route |
 | Segment → Shape | Set the selected segment to Straight or Curved |
-| Road styles table → Add road style / name / color | Create and edit reusable named road colors |
+| Road styles table → Add road style / select row | Create or select a named road style |
+| Style properties → Name / Road color | Edit the selected style |
 | Segment → Road style | Choose a shared style, or Track default for the track-wide color |
 | Segment → handle coordinates, or drag a curve handle | Adjust the selected curve without changing neighboring segments |
 | Reset curve handles | Restore the selected segment’s automatic curve |
@@ -121,8 +122,13 @@ segment, not to either endpoint; there is no global curve toggle.
 
 ### Shared road styles
 
-The **Road styles** table is at the top of the sidebar. Press **Add road style**,
-then edit its name and six-digit hex color, such as `#a05a32`. Choose that style
+The **Road styles** table is at the top of the sidebar. Press **Add road style**
+or select an existing row, then edit its name and six-digit hex color, such as
+`#a05a32`, in **Style properties** below the table. The table shows names, usage
+counts and delete buttons, not editable color cells. Up/Down, Home/End and
+Enter/Space select styles from the keyboard; selection does not dirty the document
+or enter undo history. The properties block is disabled when no styles exist.
+Choose that style
 in **Segment → Road style**. Editing a style updates every segment using it;
 renaming it keeps its assignments intact because references use stable IDs.
 

@@ -8,6 +8,7 @@ export class ViewTrack extends HTMLElement {
         this.history = new TrackHistory(model, { path: '', saved: JSON.stringify(model) })
         this.selected = new Set()
         this.selectedSegment = null
+        this.selectedStyle = null
         this.preview = false
         this.tool = 'draw'
         this.spacePressed = false
@@ -32,9 +33,13 @@ export class ViewTrack extends HTMLElement {
         this.abort = new AbortController()
         this.innerHTML = `<svg xmlns="${SVG_NS}" width="100%" height="100%" viewBox="0 0 1200 800" tabindex="0" role="img" aria-label="Track editor. Draw points, select points or segments, insert points, or pan. Shift-click extends selection. Hold Space to pan."></svg>
 <aside><fieldset><legend>Road styles</legend>
-<table class="compact-actions" aria-label="Road styles"><thead><tr><th scope="col">Name</th><th scope="col">Color</th><th scope="col">Used</th><th scope="col">Action</th></tr></thead><tbody data-element="road-styles"></tbody></table>
+<table class="compact-actions" aria-label="Road styles"><thead><tr><th scope="col">Name</th><th scope="col">Used</th><th scope="col">Action</th></tr></thead><tbody data-element="road-styles"></tbody></table>
 <button type="button" data-element="add-style">Add road style</button>
 </fieldset><form autocomplete="off">
+<fieldset data-element="style-properties" disabled><legend>Style properties</legend>
+<label>Name <input data-element="style-name" type="text" maxlength="100" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
+<label>Road color <input data-element="style-color" type="text" maxlength="7" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
+</fieldset>
 <fieldset><legend>Blueprint</legend><label>Name <input data-field="name" type="text" maxlength="1000" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
 <label><input data-field="closed" type="checkbox"> Closed loop</label>
 </fieldset>
@@ -76,6 +81,17 @@ export class ViewTrack extends HTMLElement {
         this.segmentShape = this.querySelector('[data-element="segment-shape"]')
         this.segmentStyle = this.querySelector('[data-element="segment-style"]')
         this.styleRows = this.querySelector('[data-element="road-styles"]')
+        this.styleProperties = this.querySelector('[data-element="style-properties"]')
+        this.styleName = this.querySelector('[data-element="style-name"]')
+        this.styleColor = this.querySelector('[data-element="style-color"]')
+        this.stylePropertiesId = null
+        for (const field of [this.styleName, this.styleColor]) field.addEventListener('change', () => this.changeStyle(field), { signal: this.abort.signal })
+        this.styleRows.addEventListener('click', event => {
+            if (this.busy || event.target.closest('button')) return
+            const row = event.target.closest('tr[data-style-id]')
+            if (row) this.selectStyle(row.dataset.styleId, true)
+        }, { signal: this.abort.signal })
+        this.styleRows.addEventListener('keydown', event => this.styleKeyDown(event), { signal: this.abort.signal })
         this.styleEditors = new Map()
         this.styleChoices = null
         this.segmentChoices = null
@@ -224,22 +240,43 @@ export class ViewTrack extends HTMLElement {
         this.render()
     }
 
+    selectStyle(id, focus = false) {
+        if (this.busy) return
+        if (!this.history.model.styles.some(style => style.id === id)) throw new Error('Missing road style')
+        this.cancelDrag()
+        this.selectedStyle = id
+        this.render()
+        if (focus) this.styleEditors.get(id).row.focus()
+    }
+
+    styleKeyDown(event) {
+        const row = event.target.closest('tr[data-style-id]')
+        if (!row || this.busy || event.target.closest('button')) return
+        const styles = this.history.model.styles
+        const index = styles.findIndex(style => style.id === row.dataset.styleId)
+        if (index < 0) throw new Error('Missing road style')
+        const destinations = { ArrowUp: index - 1, ArrowDown: index + 1, Home: 0, End: styles.length - 1, Enter: index, ' ': index }
+        if (!Object.hasOwn(destinations, event.key)) return
+        event.preventDefault()
+        event.stopPropagation()
+        const target = Math.max(0, Math.min(styles.length - 1, destinations[event.key]))
+        this.selectStyle(styles[target].id, true)
+    }
+
     addStyle() {
         if (this.busy) return
         this.cancelDrag()
         this.history.commit(addTrackStyle(this.history.model))
+        this.selectedStyle = this.history.model.styles.at(-1).id
         this.render()
-        const id = this.history.model.styles.at(-1).id
-        this.styleEditors.get(id).name.focus()
+        this.styleName.focus()
     }
 
-    changeStyle(id, field) {
-        if (this.busy) return
+    changeStyle(field) {
+        if (this.busy || this.selectedStyle === null) return
         this.cancelDrag()
-        const editors = this.styleEditors.get(id)
-        if (!editors) throw new Error('Missing style editor')
         try {
-            this.history.commit(updateTrackStyle(this.history.model, id, editors.name.value, editors.color.value))
+            this.history.commit(updateTrackStyle(this.history.model, this.selectedStyle, this.styleName.value, this.styleColor.value))
         } catch (error) {
             field.setCustomValidity(error.message)
             field.reportValidity()
@@ -249,14 +286,22 @@ export class ViewTrack extends HTMLElement {
         this.render()
     }
 
-    deleteStyle(id) {
+    deleteStyle(id, focus = false) {
         if (this.busy) return
         this.cancelDrag()
+        const index = this.history.model.styles.findIndex(style => style.id === id)
         this.history.commit(removeTrackStyle(this.history.model, id))
+        const styles = this.history.model.styles
+        if (this.selectedStyle === id) this.selectedStyle = styles.length ? styles[Math.min(index, styles.length - 1)].id : null
         this.render()
+        if (focus) {
+            if (this.selectedStyle !== null) this.styleEditors.get(this.selectedStyle).row.focus()
+            else this.addStyleButton.focus()
+        }
     }
 
     updateStyleControls(model) {
+        if (!model.styles.some(style => style.id === this.selectedStyle)) this.selectedStyle = model.styles.length ? model.styles[0].id : null
         const ids = new Set(model.styles.map(style => style.id))
         for (const [id, editors] of this.styleEditors) if (!ids.has(id)) {
             editors.row.remove()
@@ -268,22 +313,9 @@ export class ViewTrack extends HTMLElement {
             let editors = this.styleEditors.get(style.id)
             if (!editors) {
                 const row = document.createElement('tr')
-                const input = (key, label, maxlength) => {
-                    const cell = document.createElement('td')
-                    const field = document.createElement('input')
-                    field.type = 'text'
-                    field.maxLength = maxlength
-                    field.size = key === 'color' ? 7 : 12
-                    field.setAttribute('aria-label', label)
-                    for (const attribute of ['autocomplete', 'autocorrect', 'autocapitalize']) field.setAttribute(attribute, 'off')
-                    field.spellcheck = false
-                    field.addEventListener('change', () => this.changeStyle(style.id, field), { signal: this.abort.signal })
-                    cell.append(field)
-                    row.append(cell)
-                    return field
-                }
-                const name = input('name', 'Style name', 100)
-                const color = input('color', 'Style road color', 7)
+                row.dataset.styleId = style.id
+                const name = document.createElement('td')
+                row.append(name)
                 const used = document.createElement('td')
                 const actions = document.createElement('td')
                 const remove = document.createElement('button')
@@ -292,24 +324,32 @@ export class ViewTrack extends HTMLElement {
                 icon.setAttribute('aria-hidden', 'true')
                 icon.textContent = 'delete'
                 remove.append(icon)
-                remove.addEventListener('click', () => this.deleteStyle(style.id), { signal: this.abort.signal })
+                remove.addEventListener('click', event => {
+                    event.stopPropagation()
+                    this.deleteStyle(style.id, row.contains(document.activeElement))
+                }, { signal: this.abort.signal })
                 actions.append(remove)
                 row.append(used, actions)
                 this.styleRows.append(row)
-                editors = { row, name, color, used, remove }
+                editors = { row, name, used, remove }
                 this.styleEditors.set(style.id, editors)
             }
             if (this.styleRows.children[index] !== editors.row) this.styleRows.insertBefore(editors.row, this.styleRows.children[index] || null)
             const count = usage.get(style.id) || 0
-            for (const [field, value] of [[editors.name, style.name], [editors.color, style.roadColor]]) {
-                field.disabled = this.busy
-                if (field !== document.activeElement || this.busy) field.value = value
-            }
-            editors.color.setAttribute('aria-label', `Road color for ${style.name}`)
+            editors.name.textContent = style.name
+            editors.row.setAttribute('aria-selected', String(style.id === this.selectedStyle))
+            editors.row.setAttribute('aria-disabled', String(this.busy))
+            editors.row.tabIndex = !this.busy && style.id === this.selectedStyle ? 0 : -1
             editors.used.textContent = String(count)
             editors.remove.disabled = this.busy || count > 0
             editors.remove.setAttribute('aria-label', `Delete road style ${style.name}`)
         }
+        const selected = model.styles.find(style => style.id === this.selectedStyle)
+        this.styleProperties.disabled = this.busy || !selected
+        for (const [field, value] of [[this.styleName, selected ? selected.name : ''], [this.styleColor, selected ? selected.roadColor : '']]) {
+            if (field !== document.activeElement || this.busy || this.stylePropertiesId !== this.selectedStyle) field.value = value
+        }
+        this.stylePropertiesId = this.selectedStyle
         this.addStyleButton.disabled = this.busy || model.styles.length >= 256
         const choices = [['', 'Track default'], ...model.styles.map(style => [style.id, style.name])]
         if (JSON.stringify(choices) !== this.styleChoices) {
