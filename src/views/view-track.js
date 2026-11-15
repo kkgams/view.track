@@ -537,9 +537,8 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         const camera = this.camera
         const dirty = JSON.stringify(this.history.model) !== this.saved
         const road = this.activeRoad(model)
-        const hints = { draw: 'Click road to insert · Click outside to add after selected point · Esc then click outside to start a new road · Space + drag to pan', select: 'Click a road segment to edit · Click points or drag a box to select · Space + drag to pan' }
         this.status.className = ''
-        this.status.textContent = `${dirty ? 'Unsaved · ' : ''}${this.path || 'New blueprint'} · ${model.roads.length} roads${road ? ` · Road ${model.roads.indexOf(road) + 1} (${road.closed && road.pointIds.length > 2 ? 'loop' : 'open'})` : ''} · ${model.points.length} points · ${this.selected.size} points selected${this.selectedSegment ? ` · Segment ${model.segments.findIndex(segment => segment.id === this.selectedSegment) + 1}` : ''} · ${Math.round(model.viewport.width / camera.width * 100)}% · ${this.preview ? 'Preview' : this.drag && this.drag.mergeTarget ? 'Release to merge roads' : hints[this.tool]}`
+        this.status.textContent = `${dirty ? 'Unsaved · ' : ''}${this.path || 'New blueprint'} · ${model.roads.length} roads${road ? ` · Road ${model.roads.indexOf(road) + 1} (${road.closed && road.pointIds.length > 2 ? 'loop' : 'open'})` : ''} · ${model.points.length} points · ${this.selected.size} points selected${this.selectedSegment ? ` · Segment ${model.segments.findIndex(segment => segment.id === this.selectedSegment) + 1}` : ''} · ${Math.round(model.viewport.width / camera.width * 100)}%${this.preview ? ' · Preview' : this.drag && this.drag.mergeTarget ? ' · Release to merge roads' : ''}`
     }
 
     screenScale() {
@@ -656,8 +655,8 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
                 if (hit) next = insertTrackPoint(model, hit.index, added, hit.t)
                 else {
                     if (this.selected.size > 1) return
-                    const afterId = this.selected.size === 1 ? [...this.selected][0] : null
-                    next = addTrackPoint(model, added, afterId)
+                    const originId = this.selected.size === 1 ? [...this.selected][0] : null
+                    next = addTrackPoint(model, added, originId)
                 }
                 this.selectedSegment = null
                 this.selected = new Set([added.id])

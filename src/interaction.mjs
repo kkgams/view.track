@@ -105,18 +105,26 @@ export function insertTrackPoint(model, index, point, t) {
     return next
 }
 
-// Off-road drawing changes route order; on-road insertion preserves curve geometry.
-export function addTrackPoint(model, point, afterId = null) {
+// Outside the road, only an open endpoint continues an existing route.
+// Inserting within a road remains a separate on-road picking operation.
+export function addTrackPoint(model, point, originId = null) {
     const next = structuredClone(model)
-    if (afterId === null) {
+    let road = null
+    if (originId !== null) {
+        road = next.roads.find(road => road.pointIds.includes(originId))
+        if (!road) throw new Error('Missing drawing origin')
+        if (!isTrackEndpoint(road, originId)) road = null
+    }
+    if (road === null) {
         next.points.push(structuredClone(point))
         next.roads.push({ id: crypto.randomUUID(), closed: false, pointIds: [point.id] })
     } else {
-        const road = next.roads.find(road => road.pointIds.includes(afterId))
-        const index = next.points.findIndex(point => point.id === afterId)
-        if (!road || index === -1) throw new Error('Missing drawing origin')
-        road.pointIds.splice(road.pointIds.indexOf(afterId) + 1, 0, point.id)
-        next.points.splice(index + 1, 0, structuredClone(point))
+        const index = next.points.findIndex(point => point.id === originId)
+        if (index === -1) throw new Error('Missing drawing origin')
+        const prepend = road.pointIds.length > 1 && road.pointIds[0] === originId
+        road.pointIds.splice(prepend ? 0 : road.pointIds.length, 0, point.id)
+        road.closed = false
+        next.points.splice(prepend ? index : index + 1, 0, structuredClone(point))
     }
     return syncTrackSegments(next)
 }

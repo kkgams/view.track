@@ -54,7 +54,8 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 | Control | Action |
 | --- | --- |
 | Add point (D), Escape then click empty space | Start a new disconnected road |
-| Add point (D), select a point then click outside the road | Add immediately after that point, before its next neighbor |
+| Add point (D), select an open endpoint then click outside the road | Extend that end; prepend at the start or append at the end |
+| Add point (D), select an interior or loop point then click empty space | Start a new disconnected road |
 | Add point (D), click on a road segment | Insert between its endpoints, including the closing segment |
 | Add point (D), select one end then click the opposite end | Connect the first and last points into a loop |
 | Select (V), click a point | Select it without creating points |
@@ -87,9 +88,12 @@ tools, edit history and view controls. The active tool is highlighted and has
 A blueprint can contain multiple disconnected roads. With no points selected,
 clicking empty space starts a new open road. Press **Escape** to deselect before
 starting another road. The new point becomes selected, so subsequent clicks
-continue that road. Select any point in an existing road to resume drawing
-immediately after it in that road’s route order, for open roads and loops alike.
-Select exactly one point to continue drawing; off-road clicks with multiple
+continue that road. Select an endpoint of an existing open road to extend it:
+the new point is added before the start or after the end, without inserting
+between existing neighbors. Selecting an interior point or any point in a loop
+and clicking empty space starts a new road instead. The new point remains
+selected so subsequent clicks continue from its endpoint.
+Select exactly one endpoint to continue drawing; off-road clicks with multiple
 points selected do not add points. Clicking an existing road still splits the
 clicked segment even when nothing is selected. Roads remain independent at
 crossings; clicking another road’s endpoint selects it rather than joining roads.
