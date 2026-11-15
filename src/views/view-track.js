@@ -151,7 +151,7 @@ export class ViewTrack extends HTMLElement {
     mountControls() {
         const groups = [
             ['file-actions', [['open', 'Open SVG', 'folder_open'], ['save', 'Save', 'save'], ['saveAs', 'Save as', 'save_as'], ['download', 'Download SVG', 'download']]],
-            ['tool-actions', [['draw', 'Add point', 'edit', 'D'], ['select', 'Select points or segments', 'select_all', 'V'], ['toggleLoop', 'Connect road ends / Open road', 'link'], ['deleteSelected', 'Delete selected points', 'delete']]],
+            ['tool-actions', [['select', 'Select points or segments', 'select_all', 'V'], ['draw', 'Add point', 'edit', 'D'], ['toggleLoop', 'Connect road ends / Open road', 'link'], ['deleteSelected', 'Delete selected points', 'delete']]],
             ['edit-actions', [['undo', 'Undo', 'undo'], ['redo', 'Redo', 'redo']]],
             ['view-actions', [['zoomIn', 'Zoom in', 'zoom_in'], ['zoomFit', 'Fit track', 'fit_screen'], ['zoomOut', 'Zoom out', 'zoom_out'], ['preview', 'Preview', 'visibility']]],
         ]
