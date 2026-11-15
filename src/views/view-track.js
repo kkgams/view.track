@@ -475,7 +475,7 @@ export class ViewTrack extends HTMLElement {
             for (let x = 0; x <= model.viewport.width; x += model.settings.gridSize) grid.push(`M ${x} 0 V ${model.viewport.height}`)
             for (let y = 0; y <= model.viewport.height; y += model.settings.gridSize) grid.push(`M 0 ${y} H ${model.viewport.width}`)
         }
-        this.svg.innerHTML = `<rect data-element="viewport-background" x="${camera.x}" y="${camera.y}" width="${camera.width}" height="${camera.height}" fill="${this.preview ? '#ffffff' : '#121c28'}"/>
+        this.svg.innerHTML = `<rect data-element="viewport-background" fill="${this.preview ? '#ffffff' : '#121c28'}"/>
 <rect data-element="document-boundary" width="${model.viewport.width}" height="${model.viewport.height}" fill="none" stroke="${this.preview ? '#ffffff' : '#344457'}" stroke-width="${1 / scale}"/>
 <path d="${grid.join(' ')}" stroke="#344457" stroke-width="1" fill="none" pointer-events="none"/>
 ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
@@ -499,7 +499,7 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
             this.svg.append(box)
         }
         this.updateControls()
-        this.updateStatus()
+        this.renderViewport()
     }
 
     renderSegmentOverlay(model, scale) {

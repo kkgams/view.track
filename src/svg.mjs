@@ -60,7 +60,13 @@ export function updateTrackViewport(svg, camera) {
     const background = svg.querySelector('[data-element="viewport-background"]')
     const boundary = svg.querySelector('[data-element="document-boundary"]')
     if (!background || !boundary) throw new Error('Track SVG is missing its viewport surfaces')
-    for (const [name, value] of Object.entries({ x: camera.x, y: camera.y, width: camera.width, height: camera.height })) background.setAttribute(name, value)
+    // preserveAspectRatio keeps road geometry undistorted but can expose space
+    // beyond the viewBox. Paint the entire SVG viewport, including those margins.
+    const viewport = svg.getBoundingClientRect()
+    const inverse = matrix.inverse()
+    const start = new DOMPoint(viewport.left, viewport.top).matrixTransform(inverse)
+    const end = new DOMPoint(viewport.right, viewport.bottom).matrixTransform(inverse)
+    for (const [name, value] of Object.entries({ x: start.x, y: start.y, width: end.x - start.x, height: end.y - start.y })) background.setAttribute(name, value)
     boundary.setAttribute('stroke-width', 1 / scale)
     for (const point of svg.querySelectorAll('[data-element="points"] circle')) {
         point.setAttribute('r', 9 / scale)

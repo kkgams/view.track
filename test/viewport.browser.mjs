@@ -49,7 +49,8 @@ ${renderTrack(model)}<g data-element="points"><circle cx="200" cy="200"/></g>
         let scale = svg.getScreenCTM().a
         check(Math.abs(Number(point.getAttribute('r')) * scale - 9) < 1e-9, 'Handle hit size changed')
         const background = svg.querySelector('[data-element="viewport-background"]')
-        check(Number(background.getAttribute('x')) === camera.x && Number(background.getAttribute('width')) === camera.width, 'Background did not follow camera')
+        // SVG viewBox coordinates are stored at browser precision, not JS double precision.
+        check(Math.abs(Number(background.getAttribute('x')) - camera.x) < 0.001 && Math.abs(Number(background.getAttribute('width')) - camera.width) < 0.001, 'Background did not follow camera')
         svg.setAttribute('width', '600')
         svg.setAttribute('height', '400')
         updateTrackViewport(svg, camera)
@@ -60,8 +61,32 @@ ${renderTrack(model)}<g data-element="points"><circle cx="200" cy="200"/></g>
         check(Math.abs(Number(overlay.querySelector('circle').getAttribute('r')) * scale - 7) < 1e-9, 'Curve handle hit size changed')
         check(Math.abs(Number(overlay.querySelector('line').getAttribute('stroke-width')) * scale - 1.5) < 1e-9, 'Curve handle line size changed')
         check(Math.abs(Number(overlay.querySelector('path').getAttribute('stroke-width')) * scale - 3) < 1e-9, 'Segment highlight size changed')
+        // The visible SVG area can be wider/taller than its fixed-aspect viewBox.
+        // Exercise resize, pan and zoom without replacing the mounted wheel target.
+        let coverageCases = 0
+        for (const [width, height] of [[1200, 400], [400, 800], [1200, 800]]) {
+            svg.setAttribute('width', width)
+            svg.setAttribute('height', height)
+            for (const bounds of [
+                { x: 0, y: 0, width: 1200, height: 800 },
+                { x: 300, y: -200, width: 1200, height: 800 },
+                { x: -400, y: 500, width: 600, height: 400 },
+                { x: -10000, y: -5000, width: 60000, height: 40000 },
+                { x: 600, y: 400, width: 18.75, height: 12.5 },
+            ]) {
+                updateTrackViewport(svg, bounds)
+                const viewport = svg.getBoundingClientRect()
+                const painted = background.getBoundingClientRect()
+                check(painted.left <= viewport.left + 1e-6 && painted.right >= viewport.right - 1e-6 &&
+                    painted.top <= viewport.top + 1e-6 && painted.bottom >= viewport.bottom - 1e-6,
+                    `Background leaves uncovered canvas at ${width}×${height}, camera ${JSON.stringify(bounds)}`)
+                check(background === svg.querySelector('[data-element="viewport-background"]'), 'Pan replaced the background gesture target')
+                check(Math.abs(Number(point.getAttribute('r')) * svg.getScreenCTM().a - 9) < 1e-9, 'Aspect change distorted point handles')
+                coverageCases++
+            }
+        }
         check(exportBlueprint(model) === exported, 'Camera updates changed the saved blueprint')
-        return { gestures: 3, updatesPerGesture: 40, targetsPreserved: true, geometryPreserved: true, handleSizePreserved: true, segmentOverlaySizePreserved: true, exportUnchanged: true }
+        return { coverageCases, gestures: 3, updatesPerGesture: 40, targetsPreserved: true, geometryPreserved: true, handleSizePreserved: true, segmentOverlaySizePreserved: true, exportUnchanged: true }
     } finally {
         svg.remove()
     }
