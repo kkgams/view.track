@@ -181,19 +181,34 @@ function reverseTrackRoad(model, road) {
     }
 }
 
-export function canMergeTrackEndpoints(model, sourceId, targetId) {
+export function canJoinTrackEndpoints(model, sourceId, targetId) {
     const source = trackPointRoad(model.roads, sourceId), target = trackPointRoad(model.roads, targetId)
     return source !== target && isTrackEndpoint(source, sourceId) && isTrackEndpoint(target, targetId)
 }
 
-export function mergeTrackEndpoints(model, sourceId, targetId) {
+function prepareTrackJoin(model, sourceId, targetId) {
     const next = validateBlueprint(model)
     const source = trackPointRoad(next.roads, sourceId), target = trackPointRoad(next.roads, targetId)
-    if (!canMergeTrackEndpoints(next, sourceId, targetId)) {
-        throw new Error('Merge requires endpoints of different open roads')
+    if (!canJoinTrackEndpoints(next, sourceId, targetId)) {
+        throw new Error('Joining requires endpoints of different open roads')
     }
     if (source.pointIds.at(-1) !== sourceId) reverseTrackRoad(next, source)
     if (target.pointIds[0] !== targetId) reverseTrackRoad(next, target)
+    return { next, source, target }
+}
+
+// Clicking creates a new connection; both existing endpoints stay in place.
+export function connectTrackEndpoints(model, sourceId, targetId) {
+    const { next, source, target } = prepareTrackJoin(model, sourceId, targetId)
+    target.pointIds = [...source.pointIds, ...target.pointIds]
+    target.closed = false
+    next.roads = next.roads.filter(road => road !== source)
+    return syncTrackSegments(next)
+}
+
+// Dropping a dragged endpoint welds it to the destination, retaining one point.
+export function mergeTrackEndpoints(model, sourceId, targetId) {
+    const { next, source, target } = prepareTrackJoin(model, sourceId, targetId)
     target.pointIds = [...source.pointIds.slice(0, -1), ...target.pointIds]
     target.closed = false
     for (const segment of next.segments) {

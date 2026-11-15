@@ -623,8 +623,8 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
                 if (!road) throw new Error('Point has no road')
                 if (this.tool === 'draw' && !event.shiftKey && this.selected.size === 1) {
                     const sourceId = [...this.selected][0]
-                    if (canMergeTrackEndpoints(model, sourceId, id)) {
-                        this.history.commit(mergeTrackEndpoints(model, sourceId, id))
+                    if (canJoinTrackEndpoints(model, sourceId, id)) {
+                        this.history.commit(connectTrackEndpoints(model, sourceId, id))
                         this.selected = new Set([id])
                         this.selectedSegment = null
                         this.render()

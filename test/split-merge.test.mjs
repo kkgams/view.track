@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createBlueprint, syncTrackSegments, validateBlueprint, TrackHistory } from '../src/model.mjs'
-import { splitTrackPoint, mergeTrackEndpoints, trackMergeTarget } from '../src/interaction.mjs'
+import { splitTrackPoint, connectTrackEndpoints, mergeTrackEndpoints, trackMergeTarget } from '../src/interaction.mjs'
 
 function fixture(routes = ['abcde', 'fgh', 'ij']) {
     const model = createBlueprint()
@@ -85,6 +85,40 @@ for (const sourceId of ['a', 'c']) for (const targetId of ['d', 'f']) {
     })
 }
 
+for (const sourceId of ['a', 'c']) for (const targetId of ['d', 'f']) {
+    test(`connecting ${sourceId} to ${targetId} adds a bridge without removing or moving endpoints`, () => {
+        const model = fixture(['abc', 'def', 'gh'])
+        const next = checked(model, value => connectTrackEndpoints(value, sourceId, targetId))
+        const prefix = sourceId === 'a' ? 'cba' : 'abc', suffix = targetId === 'd' ? 'def' : 'fed'
+        assert.deepEqual(routes(next), [prefix + suffix, 'gh'])
+        assert.deepEqual(next.points, model.points)
+        assert.deepEqual(next.roads[0], { ...model.roads[1], pointIds: [...prefix + suffix] })
+        assert.deepEqual(next.roads[1], model.roads[2])
+        assert.equal(next.segments.length, model.segments.length + 1)
+        for (const original of model.segments) {
+            const reverse = ('abc'.includes(original.from) && sourceId === 'a') || ('def'.includes(original.from) && targetId === 'f')
+            const expected = reverse ? { ...original, from: original.to, to: original.from,
+                handles: original.handles === null ? null : { ...original.handles, start: original.handles.end, end: original.handles.start } } : original
+            assert.deepEqual(next.segments.find(segment => segment.id === original.id), expected)
+        }
+        const bridge = next.segments.find(segment => segment.from === sourceId && segment.to === targetId)
+        assert.equal(model.segments.some(segment => segment.id === bridge.id), false)
+        assert.equal(bridge.shape, 'curve')
+        assert.equal(bridge.styleId, null)
+        assert.equal(bridge.handles, null)
+    })
+}
+
+test('connecting singleton roads keeps every point and adds one segment', () => {
+    for (const roads of [['a', 'bc'], ['ab', 'c'], ['a', 'b']]) {
+        const model = fixture(roads)
+        const next = checked(model, value => connectTrackEndpoints(value, roads[0].at(-1), roads[1][0]))
+        assert.deepEqual(next.points, model.points)
+        assert.equal(next.roads.length, 1)
+        assert.equal(next.segments.length, model.segments.length + 1)
+    }
+})
+
 test('merging a later road into an earlier target restores canonical segment order', () => {
     const model = fixture(['abc', 'def', 'gh']), next = checked(model, m => mergeTrackEndpoints(m, 'f', 'a'))
     assert.deepEqual(routes(next), ['deabc', 'gh'])
@@ -131,6 +165,7 @@ test('invalid IDs, same-road, interior, closed roads and malformed models fail l
     const model = fixture()
     for (const [source, target] of [['missing', 'f'], ['a', 'missing'], ['a', 'e'], ['c', 'f'], ['a', 'g']]) {
         assert.throws(() => mergeTrackEndpoints(model, source, target))
+        assert.throws(() => connectTrackEndpoints(model, source, target))
     }
     assert.throws(() => splitTrackPoint(model, 'missing'))
     assert.throws(() => trackMergeTarget(model, 'missing', { x: 0, y: 0 }, 10))

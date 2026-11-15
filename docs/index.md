@@ -58,7 +58,7 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 | Add point (D), select an interior or loop point then click empty space | Start a new disconnected road |
 | Add point (D), click on a road segment | Insert between its endpoints, including the closing segment |
 | Add point (D), select one end then click the opposite end | Connect the first and last points into a loop |
-| Add point (D), select an endpoint then click another road’s endpoint | Merge the two open roads, retaining the clicked point |
+| Add point (D), select an endpoint then click another road’s endpoint | Add a connecting segment and join the roads, keeping both points |
 | Select (V), click a point | Select it without creating points |
 | Select (V), click near a road segment | Select that segment and show its shape and curve handles |
 | Select points, drag empty space | Box-select points in either direction; Shift adds to the selection |
@@ -111,15 +111,19 @@ route at the gap. Splitting at an open endpoint trims that end. Removing a lone
 point removes its road. **Delete selected points**, unlike Split, reconnects
 surviving neighbors within each road.
 
-To join two roads, drag one endpoint onto an endpoint of a different open road
-and release, or select an endpoint in **Add point (D)** mode and click the other
-road’s endpoint. Shift-click only changes selection and never joins roads.
-A highlighted ring marks the merge target during dragging. The roads orient
-themselves to form one route, keeping the destination point’s ID and exact
-position and the destination road’s ID and metadata; the dragged point and its
-road record are removed. Interior points, loop points and multi-point group
-drags do not merge roads. A lone point is also an open endpoint. Esc cancels the
-drag without joining. Splitting and merging are each one undo step.
+To connect two roads, select an endpoint in **Add point (D)** mode and click the
+other road’s endpoint. This adds an automatic curved segment using Track default,
+keeping both existing points and their positions—just like adding the closing
+segment of a loop. Shift-click only changes selection and never joins roads.
+
+Dragging an endpoint onto another road’s endpoint is different: it welds the two
+points into one. A highlighted ring marks the merge target. The destination
+point’s ID and exact position are retained; the dragged point is removed.
+Both joining actions orient the roads into one route, retaining the destination
+road’s ID and metadata and removing the source road record. Interior points,
+loop points and multi-point group drags do not join roads. A lone point is also
+an open endpoint. Esc cancels a drag without joining. Splitting, click-connecting
+and drag-merging are each one undo step.
 To remove every road, select all and delete.
 
 With the SVG focused, D/V switches tools, Ctrl/Cmd+A selects all points,

@@ -724,18 +724,49 @@ test('endpoint merging lands on the exact target even when grid snapping is enab
     assert.deepEqual(view.history.model.points.find(point => point.id === target.id), target)
 })
 
-test('clicking another road endpoint in Add point merges in one undo step for every orientation', () => {
+test('click-connecting a newly drawn two-point road preserves its last point', () => {
+    const view = editor()
+    view.history = new model.TrackHistory(model.createBlueprint())
+    view.tool = 'draw'
+    view.pointerDown(pointer(100, 100))
+    view.pointerDown(pointer(300, 100))
+    const sourceId = view.history.model.roads[0].pointIds[1]
+    view.keyDown({ key: 'Escape' })
+    view.pointerDown(pointer(700, 100))
+    view.pointerDown(pointer(900, 100))
+    const targetId = view.history.model.roads[1].pointIds[0]
+    const before = structuredClone(view.history.model)
+    view.selected = new Set([sourceId])
+    const target = before.points.find(point => point.id === targetId)
+    view.pointerDown(pointer(target.x, target.y, { 'data-id': targetId }))
+    assert.deepEqual(view.history.model.points, before.points)
+    assert.equal(view.history.model.points.length, 4)
+    assert.equal(view.history.model.roads.length, 1)
+    assert.equal(view.history.model.segments.length, 3)
+    assert.deepEqual(view.history.model.roads[0].pointIds, before.roads.flatMap(road => road.pointIds))
+})
+
+test('clicking another road endpoint adds a connection and keeps both points in every orientation', () => {
     for (const sourceId of ['a', 'c']) for (const targetEnd of [0, 2]) {
         const view = editor()
         const second = drawSecondRoad(view)
         const targetId = second.pointIds[targetEnd]
         view.selected = new Set([sourceId])
         const before = structuredClone(view.history.model)
-        const expected = interaction.mergeTrackEndpoints(before, sourceId, targetId)
         const steps = view.history.past.length
         const target = before.points.find(point => point.id === targetId)
         view.pointerDown(pointer(target.x, target.y, { 'data-id': targetId }))
-        assert.deepEqual(view.history.model, expected)
+        assert.deepEqual(view.history.model.points, before.points)
+        assert.equal(view.history.model.segments.length, before.segments.length + 1)
+        const prefix = sourceId === 'a' ? ['c', 'b', 'a'] : ['a', 'b', 'c']
+        const suffix = targetEnd === 0 ? second.pointIds : [...second.pointIds].reverse()
+        assert.equal(view.history.model.roads.length, 1)
+        assert.deepEqual(view.history.model.roads[0].pointIds, [...prefix, ...suffix])
+        const bridge = view.history.model.segments.find(segment => segment.from === sourceId && segment.to === targetId)
+        assert.equal(bridge.shape, 'curve')
+        assert.equal(bridge.handles, null)
+        assert.equal(bridge.styleId, null)
+        const expected = structuredClone(view.history.model)
         assert.deepEqual([...view.selected], [targetId])
         assert.equal(view.selectedSegment, null)
         assert.equal(view.drag, null)
@@ -749,7 +780,7 @@ test('clicking another road endpoint in Add point merges in one undo step for ev
     }
 })
 
-test('endpoint clicks merge with the clicked point even when other endpoints overlap it', () => {
+test('endpoint clicks connect to the clicked point even when other endpoints overlap it', () => {
     const view = editor()
     const second = drawSecondRoad(view)
     const first = view.history.model.points.find(point => point.id === second.pointIds[0])
@@ -757,13 +788,14 @@ test('endpoint clicks merge with the clicked point even when other endpoints ove
     target.x = first.x
     target.y = first.y
     view.selected = new Set(['c'])
-    const expected = interaction.mergeTrackEndpoints(view.history.model, 'c', target.id)
+    const points = structuredClone(view.history.model.points)
     view.pointerDown(pointer(target.x, target.y, { 'data-id': target.id }))
-    assert.deepEqual(view.history.model, expected)
+    assert.deepEqual(view.history.model.points, points)
+    assert.deepEqual(view.history.model.roads[0].pointIds, ['a', 'b', 'c', ...[...second.pointIds].reverse()])
     assert.deepEqual([...view.selected], [target.id])
 })
 
-test('endpoint clicking does not merge with Shift, Select, interior/loop points or ambiguous selections', () => {
+test('endpoint clicking does not connect with Shift, Select, interior/loop points or ambiguous selections', () => {
     for (const state of ['shift', 'select', 'source-interior', 'target-interior', 'source-loop', 'target-loop', 'multiple', 'none']) {
         const view = editor()
         const second = drawSecondRoad(view)
