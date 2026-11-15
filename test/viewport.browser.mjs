@@ -14,7 +14,7 @@ export function runViewportTests() {
     svg.setAttribute('width', '1200')
     svg.setAttribute('height', '800')
     svg.innerHTML = `<rect data-element="viewport-background"/><rect data-element="document-boundary"/>
-${renderTrack(model)}<g data-element="points"><circle cx="200" cy="200"/></g>
+${renderTrack(model)}<g data-element="points"><circle cx="200" cy="200"/><circle data-element="merge-target" cx="900" cy="200"/></g>
 <rect data-element="selection-box" x="100" y="100" width="300" height="300"/>
 <g data-element="segment-overlay"><path data-element="segment-highlight"/><line/><circle/></g>`
     document.body.append(svg)
@@ -61,6 +61,9 @@ ${renderTrack(model)}<g data-element="points"><circle cx="200" cy="200"/></g>
         check(Math.abs(Number(overlay.querySelector('circle').getAttribute('r')) * scale - 7) < 1e-9, 'Curve handle hit size changed')
         check(Math.abs(Number(overlay.querySelector('line').getAttribute('stroke-width')) * scale - 1.5) < 1e-9, 'Curve handle line size changed')
         check(Math.abs(Number(overlay.querySelector('path').getAttribute('stroke-width')) * scale - 3) < 1e-9, 'Segment highlight size changed')
+        const mergeTarget = svg.querySelector('[data-element="merge-target"]')
+        check(Math.abs(Number(mergeTarget.getAttribute('r')) * scale - 14) < 1e-9, 'Merge target radius changed')
+        check(Math.abs(Number(mergeTarget.getAttribute('stroke-width')) * scale - 2) < 1e-9, 'Merge target outline size changed')
         // The visible SVG area can be wider/taller than its fixed-aspect viewBox.
         // Exercise resize, pan and zoom without replacing the mounted wheel target.
         let coverageCases = 0
@@ -82,6 +85,7 @@ ${renderTrack(model)}<g data-element="points"><circle cx="200" cy="200"/></g>
                     `Background leaves uncovered canvas at ${width}×${height}, camera ${JSON.stringify(bounds)}`)
                 check(background === svg.querySelector('[data-element="viewport-background"]'), 'Pan replaced the background gesture target')
                 check(Math.abs(Number(point.getAttribute('r')) * svg.getScreenCTM().a - 9) < 1e-9, 'Aspect change distorted point handles')
+                check(Math.abs(Number(mergeTarget.getAttribute('r')) * svg.getScreenCTM().a - 14) < 1e-9, 'Aspect change distorted merge target')
                 coverageCases++
             }
         }

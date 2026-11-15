@@ -68,9 +68,13 @@ export function updateTrackViewport(svg, camera) {
     const end = new DOMPoint(viewport.right, viewport.bottom).matrixTransform(inverse)
     for (const [name, value] of Object.entries({ x: start.x, y: start.y, width: end.x - start.x, height: end.y - start.y })) background.setAttribute(name, value)
     boundary.setAttribute('stroke-width', 1 / scale)
-    for (const point of svg.querySelectorAll('[data-element="points"] circle')) {
+    for (const point of svg.querySelectorAll('[data-element="points"] circle:not([data-element="merge-target"])')) {
         point.setAttribute('r', 9 / scale)
         point.setAttribute('stroke-width', 3 / scale)
+    }
+    for (const target of svg.querySelectorAll('[data-element="merge-target"]')) {
+        target.setAttribute('r', 14 / scale)
+        target.setAttribute('stroke-width', 2 / scale)
     }
     for (const handle of svg.querySelectorAll('[data-element="segment-overlay"] circle')) {
         handle.setAttribute('r', 7 / scale)

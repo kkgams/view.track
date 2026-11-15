@@ -1,8 +1,8 @@
 # Track blueprint editor
 
 An SVG racing-circuit blueprint editor for [GAMS](https://github.com/kkgams/gams).
-Build multiple independent roads, open or looped. Deselect and click empty space
-to start a new road. Add points on the road to
+Build multiple independent roads, open or looped. Split at a selected point or
+drag endpoints together to merge roads. Deselect and click empty space to start a new road. Add points on the road to
 insert or outside it to continue after the selected point; move points, select
 straight or curved segments, edit and reset curve
 handles; assign shared road colors and smoothly tapered widths to segments; configure road appearance, grid and snapping;

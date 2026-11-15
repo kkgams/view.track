@@ -1,4 +1,4 @@
-import { placePoint, syncTrackSegments, validateBlueprint } from './model.mjs'
+import { placePoint, syncTrackSegments, validateBlueprint, trackRoads } from './model.mjs'
 import { trackSegments } from './geometry.mjs'
 
 // Selection and camera state are session-only; neither changes the SVG document schema.
@@ -127,6 +127,88 @@ export function deleteTrackPoints(model, ids) {
     for (const road of next.roads) road.pointIds = road.pointIds.filter(id => !ids.has(id))
     next.roads = next.roads.filter(road => road.pointIds.length)
     return syncTrackSegments(next)
+}
+
+function trackPointRoad(roads, pointId) {
+    const road = roads.find(road => road.pointIds.includes(pointId))
+    if (!road) throw new Error('Missing track point')
+    return road
+}
+
+function isTrackLoop(road) {
+    return road.closed && road.pointIds.length > 2
+}
+
+function isTrackEndpoint(road, pointId) {
+    return !isTrackLoop(road) && (road.pointIds[0] === pointId || road.pointIds.at(-1) === pointId)
+}
+
+// Cutting removes incident edges rather than bridging the gap as deletion does.
+export function splitTrackPoint(model, pointId) {
+    const next = validateBlueprint(model)
+    const road = trackPointRoad(next.roads, pointId)
+    const index = road.pointIds.indexOf(pointId)
+    const before = road.pointIds.slice(0, index), after = road.pointIds.slice(index + 1)
+    next.points = next.points.filter(point => point.id !== pointId)
+    if (road.closed) {
+        road.pointIds = [...after, ...before]
+        road.closed = false
+    } else if (before.length && after.length) {
+        const tail = { ...structuredClone(road), id: crypto.randomUUID(), pointIds: after }
+        road.pointIds = before
+        next.roads.splice(next.roads.indexOf(road) + 1, 0, tail)
+    } else road.pointIds = [...before, ...after]
+    next.roads = next.roads.filter(road => road.pointIds.length)
+    return syncTrackSegments(next)
+}
+
+function reverseTrackRoad(model, road) {
+    const ids = new Set(road.pointIds)
+    road.pointIds.reverse()
+    for (const segment of model.segments) if (ids.has(segment.from) && ids.has(segment.to)) {
+        [segment.from, segment.to] = [segment.to, segment.from]
+        if (segment.handles !== null) segment.handles = {
+            ...segment.handles, start: segment.handles.end, end: segment.handles.start,
+        }
+    }
+}
+
+export function mergeTrackEndpoints(model, sourceId, targetId) {
+    const next = validateBlueprint(model)
+    const source = trackPointRoad(next.roads, sourceId), target = trackPointRoad(next.roads, targetId)
+    if (source === target || !isTrackEndpoint(source, sourceId) || !isTrackEndpoint(target, targetId)) {
+        throw new Error('Merge requires endpoints of different open roads')
+    }
+    if (source.pointIds.at(-1) !== sourceId) reverseTrackRoad(next, source)
+    if (target.pointIds[0] !== targetId) reverseTrackRoad(next, target)
+    target.pointIds = [...source.pointIds.slice(0, -1), ...target.pointIds]
+    target.closed = false
+    for (const segment of next.segments) {
+        if (segment.from === sourceId) segment.from = targetId
+        if (segment.to === sourceId) segment.to = targetId
+    }
+    next.points = next.points.filter(point => point.id !== sourceId)
+    next.roads = next.roads.filter(road => road !== source)
+    return syncTrackSegments(next)
+}
+
+export function trackMergeTarget(model, sourceId, position, tolerance) {
+    if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y) || !Number.isFinite(tolerance) || tolerance < 0) {
+        throw new Error('Invalid merge picking position or tolerance')
+    }
+    const roads = trackRoads(model), source = trackPointRoad(roads, sourceId)
+    if (!isTrackEndpoint(source, sourceId)) return null
+    const endpoints = new Set(roads.filter(road => road.id !== source.id && !isTrackLoop(road))
+        .flatMap(road => [road.pointIds[0], road.pointIds.at(-1)]))
+    let target = null, nearest = tolerance
+    for (const point of model.points) if (endpoints.has(point.id)) {
+        const distance = Math.hypot(point.x - position.x, point.y - position.y)
+        if (distance <= nearest && (target === null || distance < nearest)) {
+            target = point.id
+            nearest = distance
+        }
+    }
+    return target
 }
 
 export function setTrackSegmentStyle(model, id, styleId) {

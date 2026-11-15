@@ -151,7 +151,7 @@ export class ViewTrack extends HTMLElement {
     mountControls() {
         const groups = [
             ['file-actions', [['open', 'Open SVG', 'folder_open'], ['save', 'Save', 'save'], ['saveAs', 'Save as', 'save_as'], ['download', 'Download SVG', 'download']]],
-            ['tool-actions', [['select', 'Select points or segments', 'select_all', 'V'], ['draw', 'Add point', 'edit', 'D'], ['toggleLoop', 'Connect road ends / Open road', 'link'], ['deleteSelected', 'Delete selected points', 'delete']]],
+            ['tool-actions', [['select', 'Select points or segments', 'select_all', 'V'], ['draw', 'Add point', 'edit', 'D'], ['splitSelected', 'Split road at selected point', 'content_cut'], ['deleteSelected', 'Delete selected points', 'delete']]],
             ['edit-actions', [['undo', 'Undo', 'undo'], ['redo', 'Redo', 'redo']]],
             ['view-actions', [['zoomIn', 'Zoom in', 'zoom_in'], ['zoomFit', 'Fit track', 'fit_screen'], ['zoomOut', 'Zoom out', 'zoom_out'], ['preview', 'Preview', 'visibility']]],
         ]
@@ -179,7 +179,7 @@ export class ViewTrack extends HTMLElement {
                 }, { signal: this.abort.signal })
                 button.addEventListener('click', () => {
                     if (['draw', 'select'].includes(action)) { this.setTool(action); return }
-                    if (action === 'toggleLoop') { this.toggleLoop(); return }
+                    if (action === 'splitSelected') { this.splitSelected(); return }
                     if (action === 'preview') { this.cancelDrag(); this.preview = !this.preview; this.render(); return }
                     void this.perform(() => this[action]())
                 }, { signal: this.abort.signal })
@@ -428,7 +428,6 @@ export class ViewTrack extends HTMLElement {
 
     updateControls() {
         const model = this.drag && this.drag.kind === 'handle' ? this.drag.draft : this.history.model
-        const road = this.activeRoad(model)
         this.updateStyleControls(model)
         this.updateSegmentControls(model)
         for (const field of this.fields) {
@@ -442,15 +441,10 @@ export class ViewTrack extends HTMLElement {
         }
         for (const group of this.controls) for (const button of group.querySelectorAll('button')) {
             const action = button.dataset.action
-            button.disabled = this.busy || (this.preview && ['draw', 'select', 'toggleLoop', 'deleteSelected'].includes(action)) ||
-                (action === 'toggleLoop' && (!road || (!road.closed && road.pointIds.length < 3))) ||
+            button.disabled = this.busy || (this.preview && ['draw', 'select', 'splitSelected', 'deleteSelected'].includes(action)) ||
+                (action === 'splitSelected' && this.selected.size !== 1) ||
                 (action === 'deleteSelected' && this.selected.size === 0) ||
                 (action === 'undo' && !this.history.past.length) || (action === 'redo' && !this.history.future.length)
-            if (action === 'toggleLoop') {
-                button.setAttribute('aria-label', road && road.closed ? 'Open road' : 'Connect road ends')
-                button.setAttribute('aria-pressed', String(Boolean(road && road.closed)))
-                button.querySelector('i').textContent = road && road.closed ? 'link_off' : 'link'
-            }
             if (['draw', 'select'].includes(action)) {
                 button.setAttribute('aria-pressed', String(action === this.tool))
                 button.classList.toggle('accent', action === this.tool)
@@ -487,6 +481,12 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
                 const circle = document.createElementNS(SVG_NS, 'circle')
                 for (const [name, value] of Object.entries({ cx: point.x, cy: point.y, r: 9 / scale, fill: this.selected.has(point.id) ? '#ffcf66' : '#ffffff', stroke: '#121c28', 'stroke-width': 3 / scale, 'data-id': point.id, 'aria-label': `Point ${index + 1}` })) circle.setAttribute(name, value)
                 layer.append(circle)
+                if (this.drag && this.drag.mergeTarget === point.id) {
+                    const ring = document.createElementNS(SVG_NS, 'circle')
+                    for (const [name, value] of Object.entries({ cx: point.x, cy: point.y, r: 14 / scale, fill: 'none', stroke: '#91e5ff',
+                        'stroke-width': 2 / scale, 'pointer-events': 'none', 'data-element': 'merge-target' })) ring.setAttribute(name, value)
+                    layer.append(ring)
+                }
             })
         }
         if (this.drag && this.drag.kind === 'box') {
@@ -539,7 +539,7 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         const road = this.activeRoad(model)
         const hints = { draw: 'Click road to insert · Click outside to add after selected point · Esc then click outside to start a new road · Space + drag to pan', select: 'Click a road segment to edit · Click points or drag a box to select · Space + drag to pan' }
         this.status.className = ''
-        this.status.textContent = `${dirty ? 'Unsaved · ' : ''}${this.path || 'New blueprint'} · ${model.roads.length} roads${road ? ` · Road ${model.roads.indexOf(road) + 1} (${road.closed ? 'loop' : 'open'})` : ''} · ${model.points.length} points · ${this.selected.size} points selected${this.selectedSegment ? ` · Segment ${model.segments.findIndex(segment => segment.id === this.selectedSegment) + 1}` : ''} · ${Math.round(model.viewport.width / camera.width * 100)}% · ${this.preview ? 'Preview' : hints[this.tool]}`
+        this.status.textContent = `${dirty ? 'Unsaved · ' : ''}${this.path || 'New blueprint'} · ${model.roads.length} roads${road ? ` · Road ${model.roads.indexOf(road) + 1} (${road.closed && road.pointIds.length > 2 ? 'loop' : 'open'})` : ''} · ${model.points.length} points · ${this.selected.size} points selected${this.selectedSegment ? ` · Segment ${model.segments.findIndex(segment => segment.id === this.selectedSegment) + 1}` : ''} · ${Math.round(model.viewport.width / camera.width * 100)}% · ${this.preview ? 'Preview' : this.drag && this.drag.mergeTarget ? 'Release to merge roads' : hints[this.tool]}`
     }
 
     screenScale() {
@@ -688,6 +688,16 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
                 // Every event translates the original points, not the previous frame's snapped draft.
                 drag.draft = drag.kind === 'handle' ? moveTrackHandle(this.history.model, drag.segmentId, drag.handle, position) :
                     moveTrackSelection(this.history.model, drag.ids, delta)
+                if (drag.kind === 'move' && drag.ids.size === 1) {
+                    const id = [...drag.ids][0]
+                    drag.mergeTarget = trackMergeTarget(this.history.model, id, position, 9 / this.screenScale())
+                    if (drag.mergeTarget) {
+                        const target = drag.draft.points.find(point => point.id === drag.mergeTarget)
+                        const source = drag.draft.points.find(point => point.id === id)
+                        source.x = target.x
+                        source.y = target.y
+                    }
+                }
             }
         }
         this.render()
@@ -704,7 +714,10 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         if (!this.drag || event.pointerId !== this.drag.pointerId) return
         this.pointerMove(event)
         const drag = this.releaseDrag()
-        if (['move', 'handle'].includes(drag.kind)) this.history.commit(drag.draft)
+        if (drag.kind === 'move' && drag.moved && drag.mergeTarget) {
+            this.history.commit(mergeTrackEndpoints(drag.draft, [...drag.ids][0], drag.mergeTarget))
+            this.selected = new Set([drag.mergeTarget])
+        } else if (['move', 'handle'].includes(drag.kind)) this.history.commit(drag.draft)
         this.render()
     }
 
@@ -768,6 +781,15 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         if (this.preview) return
         this.cancelDrag()
         this.history.commit(deleteTrackPoints(this.history.model, this.selected))
+        this.selected.clear()
+        this.selectedSegment = null
+        this.render()
+    }
+    splitSelected() {
+        if (this.busy || this.preview) return
+        this.cancelDrag()
+        if (this.selected.size !== 1) return
+        this.history.commit(splitTrackPoint(this.history.model, [...this.selected][0]))
         this.selected.clear()
         this.selectedSegment = null
         this.render()

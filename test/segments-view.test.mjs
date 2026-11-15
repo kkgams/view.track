@@ -575,3 +575,120 @@ test('point operations fail loudly for a missing drawing origin or segment', () 
     assert.throws(() => interaction.addTrackPoint(value, { id: 'new', x: 800, y: 600 }, 'missing'), /Missing drawing origin/)
     assert.throws(() => interaction.insertTrackPoint(value, 100, { id: 'new', x: 300, y: 100 }, 0.5), /Invalid segment insertion/)
 })
+
+test('Split removes the selected point and disconnects its two sides in one undo step', () => {
+    const view = editor()
+    view.selected = new Set(['b'])
+    const before = structuredClone(view.history.model)
+    view.splitSelected()
+    assert.deepEqual(view.history.model.points.map(point => point.id), ['a', 'c'])
+    assert.deepEqual(view.history.model.roads.map(road => road.pointIds), [['a'], ['c']])
+    assert.deepEqual(view.history.model.segments, [])
+    assert.equal(view.selected.size, 0)
+    assert.equal(view.selectedSegment, null)
+    assert.equal(view.history.past.length, 1)
+    const split = structuredClone(view.history.model)
+    view.undo()
+    assert.deepEqual(view.history.model, before)
+    view.redo()
+    assert.deepEqual(view.history.model, split)
+})
+
+test('Split opens a loop at the removed point without joining the new endpoints', () => {
+    const view = editor()
+    view.history.model.roads[0].closed = true
+    model.syncTrackSegments(view.history.model)
+    const closing = structuredClone(view.history.model.segments[2])
+    view.selected = new Set(['b'])
+    view.splitSelected()
+    assert.equal(view.history.model.roads.length, 1)
+    assert.equal(view.history.model.roads[0].closed, false)
+    assert.deepEqual(view.history.model.roads[0].pointIds, ['c', 'a'])
+    assert.deepEqual(view.history.model.segments, [closing])
+})
+
+test('Split requires one point and refuses preview or busy edits', () => {
+    for (const state of ['none', 'multiple', 'preview', 'busy']) {
+        const view = editor()
+        view.selected = new Set(state === 'none' ? [] : state === 'multiple' ? ['a', 'b'] : ['b'])
+        if (state === 'preview' || state === 'busy') view[state] = true
+        const before = structuredClone(view.history.model)
+        view.splitSelected()
+        assert.deepEqual(view.history.model, before)
+        assert.equal(view.history.past.length, 0)
+    }
+})
+
+test('endpoint drag previews a merge and commits one joined road with a single surviving point', () => {
+    const view = editor()
+    const second = drawSecondRoad(view)
+    view.tool = 'select'
+    const before = structuredClone(view.history.model)
+    const steps = view.history.past.length
+    view.pointerDown(pointer(500, 500, { 'data-id': 'c' }))
+    view.pointerMove(pointer(800, 600))
+    assert.equal(view.drag.mergeTarget, second.pointIds[0])
+    assert.deepEqual(view.history.model, before)
+    const draftPoint = view.drag.draft.points.find(point => point.id === 'c')
+    assert.deepEqual(draftPoint, { id: 'c', x: 800, y: 600 })
+    view.pointerUp(pointer(800, 600))
+    const joined = view.history.model
+    assert.equal(joined.roads.length, 1)
+    assert.deepEqual(joined.roads[0].pointIds, ['a', 'b', ...second.pointIds])
+    assert.equal(joined.points.length, 5)
+    assert.equal(joined.points.some(point => point.id === 'c'), false)
+    assert.deepEqual([...view.selected], [second.pointIds[0]])
+    assert.equal(view.history.past.length, steps + 1)
+    assert.deepEqual(model.validateBlueprint(joined), joined)
+    view.undo()
+    assert.deepEqual(view.history.model, before)
+    view.redo()
+    assert.deepEqual(view.history.model, joined)
+})
+
+test('merge cancellation and leaving the target restore ordinary movement semantics', () => {
+    const view = editor()
+    const second = drawSecondRoad(view)
+    view.tool = 'select'
+    const before = structuredClone(view.history.model)
+    const steps = view.history.past.length
+    view.pointerDown(pointer(500, 500, { 'data-id': 'c' }))
+    view.pointerMove(pointer(800, 600))
+    assert.equal(view.drag.mergeTarget, second.pointIds[0])
+    view.pointerCancel(pointer(800, 600))
+    assert.deepEqual(view.history.model, before)
+    assert.equal(view.history.past.length, steps)
+    view.pointerDown(pointer(500, 500, { 'data-id': 'c' }))
+    view.pointerMove(pointer(800, 600))
+    view.pointerMove(pointer(700, 700))
+    assert.equal(view.drag.mergeTarget, null)
+    view.pointerUp(pointer(700, 700))
+    assert.equal(view.history.model.roads.length, 2)
+    assert.equal(view.history.model.points.length, 6)
+    assert.deepEqual(view.history.model.points.find(point => point.id === 'c'), { id: 'c', x: 700, y: 700 })
+})
+
+test('endpoint merging lands on the exact target even when grid snapping is enabled', () => {
+    const view = editor()
+    const second = drawSecondRoad(view)
+    view.tool = 'select'
+    view.history.model.settings.snap = true
+    const target = view.history.model.points.find(point => point.id === second.pointIds[0])
+    target.x = 801
+    target.y = 601
+    view.pointerDown(pointer(500, 500, { 'data-id': 'c' }))
+    view.pointerUp(pointer(801, 601))
+    assert.equal(view.history.model.roads.length, 1)
+    assert.deepEqual(view.history.model.points.find(point => point.id === target.id), target)
+})
+
+test('group dragging never merges roads, even when an endpoint is over another endpoint', () => {
+    const view = editor()
+    drawSecondRoad(view)
+    view.tool = 'select'
+    view.selected = new Set(['b', 'c'])
+    view.pointerDown(pointer(500, 500, { 'data-id': 'c' }))
+    view.pointerUp(pointer(800, 600))
+    assert.equal(view.history.model.roads.length, 2)
+    assert.equal(view.history.model.points.length, 6)
+})

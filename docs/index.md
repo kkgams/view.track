@@ -65,7 +65,8 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 | Delete selected points | Remove the selected points together |
 | Hold Space + left-drag | Pan without switching tools |
 | Zoom in / Fit track / Zoom out | Change the view scale or fit the full track and its road stroke |
-| Connect road ends / Open road | Add or remove the selected road’s last-to-first connection (connecting requires at least three points) |
+| Split road at selected point | Remove one point and disconnect the road there; opens a loop or separates an open road |
+| Drag an open endpoint onto another road’s open endpoint | Merge both roads, retaining just the destination point |
 | Segment → Shape | Set the selected segment to Straight or Curved |
 | Road styles table → Add road style / select row | Create or select a named road style |
 | Style properties → Name / Road color / Road width | Edit the selected style, including tapered width |
@@ -95,14 +96,24 @@ crossings; clicking another road’s endpoint selects it rather than joining roa
 New off-road connections use automatic curves and the default road style;
 unaffected segment records are preserved.
 
-Use **Connect road ends** or click the first point while the last point of the
-same road is selected in Add point mode to close that road. **Open road** removes
-only its closing connection without removing points. The toolbar uses the road
-containing the selected points or segment. With multiple roads and no selection,
-or a selection spanning roads, choose one road before connecting/opening it.
-A blueprint containing just one road needs no selection for this action.
-These actions are undoable; existing saved loops still open as loops. Deleting
-all points in a road removes that road. To remove every road, select all and delete.
+To close a road into a loop, click its first point while its last point is selected
+in Add point mode (or the reverse). This requires at least three points.
+
+Select one point and press **Split road at selected point** to remove that point
+and its incident segments without reconnecting its neighbors. In the middle of
+an open road this creates two separate roads; on a loop it opens the remaining
+route at the gap. Splitting at an open endpoint trims that end. Removing a lone
+point removes its road. **Delete selected points**, unlike Split, reconnects
+surviving neighbors within each road.
+
+To join two roads, drag one endpoint onto an endpoint of a different open road
+and release. A highlighted ring marks the merge target. The roads orient
+themselves to form one route, keeping the destination point’s ID and exact
+position and the destination road’s ID and metadata; the dragged point and its
+road record are removed. Interior points, loop points and multi-point group
+drags do not merge roads. A lone point is also an open endpoint. Esc cancels the
+drag without joining. Splitting and merging are each one undo step.
+To remove every road, select all and delete.
 
 With the SVG focused, D/V switches tools, Ctrl/Cmd+A selects all points,
 Delete/Backspace deletes the selection, Ctrl/Cmd+Z undoes,
@@ -205,8 +216,12 @@ and style assignment.
 Curves are split with explicit handles to preserve their shape; with snapping on,
 the inserted endpoint and its attached handles move to the grid. Deletion rebuilds
 affected connections as automatic curves. Unaffected segments retain their IDs,
-shapes, style assignments and manual handles. Opening a closed loop removes its closing segment; closing it creates a
-new automatic closing segment. These topology edits are undoable. Preview and
+shapes, style assignments and manual handles. Split removes only the selected
+point and its incident segments, leaving no replacement connection across the
+gap. Merging retains segment IDs, shapes and styles; reversing a route swaps its
+manual start/end handles. Automatic handles and width taper adapt to the new
+neighbors. Closing a road creates a new automatic closing segment. These topology
+edits are undoable. Preview and
 saved SVGs never include segment highlights or handles.
 
 SVG files have a white background and the selected road appearance, without
