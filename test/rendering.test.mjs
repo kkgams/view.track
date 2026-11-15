@@ -6,6 +6,7 @@ import { renderTrack, exportBlueprint } from '../src/svg.mjs'
 
 function blueprint() {
     const model = createBlueprint()
+    model.settings.closed = true
     model.points = [{ id: 'a', x: 40, y: 80 }, { id: 'b', x: 300, y: 120 }, { id: 'c', x: 180, y: 360 }]
     return syncTrackSegments(model)
 }

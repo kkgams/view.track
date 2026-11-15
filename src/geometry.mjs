@@ -41,17 +41,25 @@ export function trackPath(model) {
 }
 
 // Sample only for picking; saved geometry always comes from the control points.
-export function nearestSegment(model, point, parameter = false) {
+export function nearestSegment(model, point, parameter = false, roadTolerance = null) {
     let best = null
+    const profiles = roadTolerance === null ? null : trackRoadWidths(model)
     for (const segment of trackSegments(model)) {
+        const samples = Array.from({ length: 65 }, (_, index) => segmentPoint(segment, index / 64))
+        const lengths = [0]
+        for (let index = 1; index < samples.length; index++) lengths.push(lengths[index - 1] + Math.hypot(samples[index].x - samples[index - 1].x, samples[index].y - samples[index - 1].y))
         for (let sample = 0; sample < 64; sample++) {
-            const a = segmentPoint(segment, sample / 64)
-            const b = segmentPoint(segment, (sample + 1) / 64)
+            const a = samples[sample], b = samples[sample + 1]
             const dx = b.x - a.x, dy = b.y - a.y
             const length = dx * dx + dy * dy
             const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length))
             const x = a.x + dx * t, y = a.y + dy * t
             const distance = Math.hypot(point.x - x, point.y - y)
+            if (roadTolerance !== null) {
+                const fraction = lengths[64] === 0 ? 0 : (lengths[sample] + t * (lengths[sample + 1] - lengths[sample])) / lengths[64]
+                const radius = model.rendering.mode === 'centerline' ? 6 : roadWidthAt(profiles[segment.index], fraction) / 2 + model.rendering.edgeWidth + model.rendering.outlineWidth
+                if (distance > radius + roadTolerance) continue
+            }
             if (!best || distance < best.distance) {
                 best = { index: segment.index, x, y, distance }
                 if (parameter) best.t = (sample + t) / 64

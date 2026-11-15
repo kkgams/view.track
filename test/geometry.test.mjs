@@ -6,7 +6,7 @@ import { trackSegments, segmentPoint, trackPath, nearestSegment } from '../src/g
 function blueprint(coordinates, settings = {}) {
     const value = createBlueprint()
     const { shape = 'curve', ...routeSettings } = settings
-    value.settings = { ...value.settings, ...routeSettings }
+    value.settings = { ...value.settings, closed: true, ...routeSettings }
     value.points = coordinates.map(([x, y], index) => ({ id: String(index), x, y }))
     syncTrackSegments(value)
     value.segments.forEach(segment => { segment.shape = shape })

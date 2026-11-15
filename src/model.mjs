@@ -28,7 +28,7 @@ export function validateRendering(rendering) {
 export function createBlueprint() {
     return { format: BLUEPRINT_FORMAT, version: 1, name: 'Untitled track',
         viewport: { width: 1200, height: 800 },
-        settings: { closed: true, snap: true, grid: true, gridSize: 40 },
+        settings: { closed: false, snap: true, grid: true, gridSize: 40 },
         points: [], segments: [], styles: [], annotations: [], rendering: createRendering() }
 }
 

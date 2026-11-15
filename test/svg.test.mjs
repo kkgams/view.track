@@ -20,6 +20,7 @@ test('XML escaping handles all five reserved characters and string conversion', 
 test('export emits standalone SVG with dimensions, title, metadata and generated geometry', () => {
     const value = createBlueprint()
     value.name = 'Track Ω 🏁'
+    value.settings.closed = true
     value.points = [{ id: 'a', x: 10, y: 20 }, { id: 'b', x: 90, y: 100 }, { id: 'c', x: 150, y: 30 }]
     syncTrackSegments(value)
     const svg = exportBlueprint(value)

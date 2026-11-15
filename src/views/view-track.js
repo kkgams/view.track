@@ -31,7 +31,7 @@ export class ViewTrack extends HTMLElement {
         const initialSource = this.getAttribute('data-source')
         this.style.display = 'contents'
         this.abort = new AbortController()
-        this.innerHTML = `<svg xmlns="${SVG_NS}" width="100%" height="100%" viewBox="0 0 1200 800" tabindex="0" role="img" aria-label="Track editor. Draw points, select points or segments, insert points, or pan. Shift-click extends selection. Hold Space to pan."></svg>
+        this.innerHTML = `<svg xmlns="${SVG_NS}" width="100%" height="100%" viewBox="0 0 1200 800" tabindex="0" role="img" aria-label="Track editor. Add points on or outside the road, connect ends, or select points and segments. Shift-click extends selection. Hold Space to pan."></svg>
 <aside><fieldset><legend>Road styles</legend>
 <table class="compact-actions" aria-label="Road styles"><thead><tr><th scope="col">Name</th><th scope="col">Used</th><th scope="col">Action</th></tr></thead><tbody data-element="road-styles"></tbody></table>
 <button type="button" data-element="add-style">Add road style</button>
@@ -42,7 +42,6 @@ export class ViewTrack extends HTMLElement {
 <label>Road width <input data-element="style-width" type="number" min="1" max="200" step="any" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
 </fieldset>
 <fieldset><legend>Blueprint</legend><label>Name <input data-field="name" type="text" maxlength="1000" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
-<label><input data-field="closed" type="checkbox"> Closed loop</label>
 </fieldset>
 <fieldset data-element="segment-inspector"><legend>Segment</legend>
 <label>Selected segment <select data-element="segment-picker" aria-label="Selected segment"></select></label>
@@ -132,7 +131,7 @@ export class ViewTrack extends HTMLElement {
         for (const method of ['open', 'save', 'saveAs', 'undo', 'redo', 'deleteSelected', 'clearSelection', 'zoomIn', 'zoomOut', 'zoomFit']) {
             methods[method] = async input => viewOk(await this.perform(() => this[method](input)))
         }
-        for (const [index, tool] of ['draw', 'select', 'insert', 'pan'].entries()) methods[`tool_${index + 1}`] = () => viewOk(this.setTool(tool))
+        for (const [index, tool] of ['draw', 'select'].entries()) methods[`tool_${index + 1}`] = () => viewOk(this.setTool(tool))
         registerViewPlugin(this, methods)
         const source = this.getAttribute('data-source') || initialSource
         this.render()
@@ -152,7 +151,7 @@ export class ViewTrack extends HTMLElement {
     mountControls() {
         const groups = [
             ['file-actions', [['open', 'Open SVG', 'folder_open'], ['save', 'Save', 'save'], ['saveAs', 'Save as', 'save_as'], ['download', 'Download SVG', 'download']]],
-            ['tool-actions', [['draw', 'Draw points', 'edit', 'D'], ['select', 'Select points or segments', 'select_all', 'V'], ['insert', 'Insert point', 'add', 'I'], ['pan', 'Pan', 'pan_tool', 'H'], ['deleteSelected', 'Delete selected points', 'delete'], ['clear', 'Clear track', 'delete_sweep']]],
+            ['tool-actions', [['draw', 'Add point', 'add', 'D'], ['select', 'Select points or segments', 'select_all', 'V'], ['toggleLoop', 'Connect ends / Open track', 'link'], ['deleteSelected', 'Delete selected points', 'delete']]],
             ['edit-actions', [['undo', 'Undo', 'undo'], ['redo', 'Redo', 'redo']]],
             ['view-actions', [['zoomIn', 'Zoom in', 'zoom_in'], ['zoomFit', 'Fit track', 'fit_screen'], ['zoomOut', 'Zoom out', 'zoom_out'], ['preview', 'Preview', 'visibility']]],
         ]
@@ -172,14 +171,15 @@ export class ViewTrack extends HTMLElement {
                 icon.textContent = symbol
                 button.append(icon)
                 if (action === 'save') button.classList.add('accent')
-                if (action === 'deleteSelected' || action === 'clear') button.classList.add('danger')
+                if (action === 'deleteSelected') button.classList.add('danger')
                 button.addEventListener('pointerenter', () => {
                     const rect = button.getBoundingClientRect()
-                    void runtime.call('ui.tooltip.tip', { content: shortcut ? `${label} (${shortcut})` : label,
+                    void runtime.call('ui.tooltip.tip', { content: shortcut ? `${label} (${shortcut})` : button.getAttribute('aria-label'),
                         anchor: { kind: 'aabb', x: rect.x, y: rect.y, width: rect.width, height: rect.height } }).then(result => unwrap(result))
                 }, { signal: this.abort.signal })
                 button.addEventListener('click', () => {
-                    if (['draw', 'select', 'insert', 'pan'].includes(action)) { this.setTool(action); return }
+                    if (['draw', 'select'].includes(action)) { this.setTool(action); return }
+                    if (action === 'toggleLoop') { this.toggleLoop(); return }
                     if (action === 'preview') { this.cancelDrag(); this.preview = !this.preview; this.render(); return }
                     void this.perform(() => this[action]())
                 }, { signal: this.abort.signal })
@@ -221,7 +221,6 @@ export class ViewTrack extends HTMLElement {
             const section = field.dataset.section === 'rendering' ? next.rendering : next.settings
             section[key] = field.type === 'checkbox' ? field.checked : field.type === 'number' ? (field.value === '' ? NaN : Number(field.value)) : field.value
         }
-        if (key === 'closed') syncTrackSegments(next)
         try { this.history.commit(next); this.render() }
         catch (error) { field.setCustomValidity(error.message); field.reportValidity(); field.setCustomValidity(''); this.render() }
     }
@@ -430,10 +429,16 @@ export class ViewTrack extends HTMLElement {
         }
         for (const group of this.controls) for (const button of group.querySelectorAll('button')) {
             const action = button.dataset.action
-            button.disabled = this.busy || (this.preview && ['draw', 'select', 'insert', 'deleteSelected', 'clear'].includes(action)) ||
+            button.disabled = this.busy || (this.preview && ['draw', 'select', 'toggleLoop', 'deleteSelected'].includes(action)) ||
+                (action === 'toggleLoop' && !model.settings.closed && model.points.length < 3) ||
                 (action === 'deleteSelected' && this.selected.size === 0) ||
                 (action === 'undo' && !this.history.past.length) || (action === 'redo' && !this.history.future.length)
-            if (['draw', 'select', 'insert', 'pan'].includes(action)) {
+            if (action === 'toggleLoop') {
+                button.setAttribute('aria-label', model.settings.closed ? 'Open track' : 'Connect ends')
+                button.setAttribute('aria-pressed', String(model.settings.closed))
+                button.querySelector('i').textContent = model.settings.closed ? 'link_off' : 'link'
+            }
+            if (['draw', 'select'].includes(action)) {
                 button.setAttribute('aria-pressed', String(action === this.tool))
                 button.classList.toggle('accent', action === this.tool)
             }
@@ -449,7 +454,7 @@ export class ViewTrack extends HTMLElement {
         this.selected = new Set([...this.selected].filter(id => ids.has(id)))
         const camera = this.camera
         this.svg.setAttribute('viewBox', `${camera.x} ${camera.y} ${camera.width} ${camera.height}`)
-        this.svg.setAttribute('cursor', this.drag && this.drag.kind === 'pan' ? 'grabbing' : this.tool === 'pan' || this.spacePressed ? 'grab' : this.tool === 'select' ? 'default' : 'crosshair')
+        this.svg.setAttribute('cursor', this.drag && this.drag.kind === 'pan' ? 'grabbing' : this.spacePressed ? 'grab' : this.tool === 'select' ? 'default' : 'crosshair')
         const scale = this.screenScale()
         // Only generated, validated values enter this markup; imported SVG never does.
         const grid = []
@@ -518,9 +523,9 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         const model = this.drag && ['move', 'handle'].includes(this.drag.kind) ? this.drag.draft : this.history.model
         const camera = this.camera
         const dirty = JSON.stringify(this.history.model) !== this.saved
-        const hints = { draw: 'Click to add · Drag selected points to move', select: 'Click a road segment to edit · Click points or drag a box to select', insert: 'Click a segment to insert a point', pan: 'Drag to pan' }
+        const hints = { draw: 'Click road to insert · Click outside to extend · Click opposite end to connect · Space + drag to pan', select: 'Click a road segment to edit · Click points or drag a box to select · Space + drag to pan' }
         this.status.className = ''
-        this.status.textContent = `${dirty ? 'Unsaved · ' : ''}${this.path || 'New blueprint'} · ${model.points.length} points · ${this.selected.size} points selected${this.selectedSegment ? ` · Segment ${model.segments.findIndex(segment => segment.id === this.selectedSegment) + 1}` : ''} · ${Math.round(model.viewport.width / camera.width * 100)}% · ${this.preview ? 'Preview' : hints[this.tool]}`
+        this.status.textContent = `${dirty ? 'Unsaved · ' : ''}${this.path || 'New blueprint'} · ${model.settings.closed ? 'Loop' : 'Open track'} · ${model.points.length} points · ${this.selected.size} points selected${this.selectedSegment ? ` · Segment ${model.segments.findIndex(segment => segment.id === this.selectedSegment) + 1}` : ''} · ${Math.round(model.viewport.width / camera.width * 100)}% · ${this.preview ? 'Preview' : hints[this.tool]}`
     }
 
     screenScale() {
@@ -536,8 +541,8 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
     }
 
     setTool(tool) {
-        if (!['draw', 'select', 'insert', 'pan'].includes(tool)) throw new Error(`Unknown track tool: ${tool}`)
-        if (this.busy || (this.preview && tool !== 'pan')) return false
+        if (!['draw', 'select'].includes(tool)) throw new Error(`Unknown track tool: ${tool}`)
+        if (this.busy || this.preview) return false
         this.cancelDrag()
         this.tool = tool
         this.render()
@@ -582,7 +587,7 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
 
     pointerDown(event) {
         if (this.busy || this.drag || ![0, 1].includes(event.button)) return
-        const pan = event.button === 1 || this.tool === 'pan' || this.spacePressed
+        const pan = event.button === 1 || this.spacePressed
         if (this.preview && !pan) return
         event.preventDefault()
         this.svg.focus()
@@ -590,7 +595,7 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         const model = this.history.model
         if (pan) {
             this.drag = { kind: 'pan', pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY,
-                camera: { ...this.camera }, scale: this.screenScale(), temporary: this.spacePressed && this.tool !== 'pan' }
+                camera: { ...this.camera }, scale: this.screenScale(), temporary: this.spacePressed }
         } else {
             const id = event.target.getAttribute('data-id')
             const handle = event.target.getAttribute('data-handle')
@@ -601,6 +606,12 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
                 this.drag = { kind: 'handle', pointerId: event.pointerId, start: position, scale: this.screenScale(),
                     handle, segmentId: this.selectedSegment, draft: structuredClone(model), beforeSelection, beforeSegment, moved: false }
             } else if (id) {
+                const first = model.points[0], last = model.points.at(-1)
+                if (this.tool === 'draw' && !event.shiftKey && !model.settings.closed && model.points.length >= 3 && this.selected.size === 1 &&
+                    ((id === first.id && this.selected.has(last.id)) || (id === last.id && this.selected.has(first.id)))) {
+                    this.toggleLoop()
+                    return
+                }
                 this.selectedSegment = null
                 if (event.shiftKey) {
                     if (this.selected.has(id)) { this.selected.delete(id); this.render(); return }
@@ -609,8 +620,8 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
                 this.drag = { kind: 'move', pointerId: event.pointerId, start: position, scale: this.screenScale(),
                     draft: structuredClone(model), ids: new Set(this.selected), beforeSelection, beforeSegment, moved: false }
             } else if (this.tool === 'select') {
-                const hit = nearestSegment(model, position)
-                if (hit && hit.distance * this.screenScale() <= 20) {
+                const hit = nearestSegment(model, position, false, 6 / this.screenScale())
+                if (hit) {
                     this.selected.clear()
                     this.selectedSegment = model.segments[hit.index].id
                     this.render()
@@ -623,19 +634,11 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
             } else {
                 if (position.x < 0 || position.y < 0 || position.x > model.viewport.width || position.y > model.viewport.height) return
                 let next = structuredClone(model)
-                let insertion = null
-                let index = next.points.length
-                let point = position
-                if (this.tool === 'insert') {
-                    const hit = nearestSegment(model, position, true)
-                    if (!hit || hit.distance * this.screenScale() > 20) return
-                    index = hit.index + 1
-                    insertion = hit
-                    point = segmentPoint(trackSegments(model)[hit.index], hit.t)
-                }
+                const hit = nearestSegment(model, position, true, 6 / this.screenScale())
+                const point = hit ? segmentPoint(trackSegments(model)[hit.index], hit.t) : position
                 const added = { id: crypto.randomUUID(), ...placePoint(model, point.x, point.y) }
-                if (insertion) next = insertTrackPoint(model, insertion.index, added, insertion.t)
-                else { next.points.splice(index, 0, added); syncTrackSegments(next) }
+                if (hit) next = insertTrackPoint(model, hit.index, added, hit.t)
+                else { next.points.push(added); syncTrackSegments(next) }
                 this.selectedSegment = null
                 this.selected = new Set([added.id])
                 this.history.commit(next)
@@ -727,9 +730,9 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
             this.selectedSegment = null
             this.selected = new Set(this.history.model.points.map(point => point.id))
             this.render()
-        } else if (!mod && !event.altKey && ['d', 'v', 'i', 'h'].includes(key)) {
+        } else if (!mod && !event.altKey && ['d', 'v'].includes(key)) {
             event.preventDefault()
-            this.setTool({ d: 'draw', v: 'select', i: 'insert', h: 'pan' }[key])
+            this.setTool({ d: 'draw', v: 'select' }[key])
         } else if (!this.preview && ['Delete', 'Backspace'].includes(event.key)) {
             event.preventDefault(); this.deleteSelected()
         } else if (event.key === 'Escape') {
@@ -751,16 +754,15 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         this.selected.clear()
         this.render()
     }
-    clear() {
-        if (this.preview) return
+    toggleLoop() {
+        if (this.busy || this.preview) return
         this.cancelDrag()
         const next = structuredClone(this.history.model)
-        next.points = []
-        next.segments = []
-        next.annotations = []
+        if (!next.settings.closed && next.points.length < 3) return
+        next.settings.closed = !next.settings.closed
+        syncTrackSegments(next)
         this.history.commit(next)
-        this.selected.clear()
-        this.resetCamera()
+        this.selectedSegment = null
         this.render()
     }
     undo() {

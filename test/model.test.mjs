@@ -50,6 +50,7 @@ test('validation accepts documented numeric limits, fractional grid and coordina
     const value = createBlueprint()
     value.name = 'x'.repeat(1000)
     value.viewport = { width: 100, height: 10000 }
+    value.settings.closed = true
     value.settings.gridSize = 5
     value.points = Array.from({ length: 10000 }, (_, id) => ({ id: String(id), x: -100000, y: 100000 }))
     syncTrackSegments(value)

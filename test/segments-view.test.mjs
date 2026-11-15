@@ -118,11 +118,11 @@ test('preview and busy operations prevent canvas and inspector edits', () => {
     }
 })
 
-test('Insert splits a straight segment without turning it into curves', () => {
+test('Add point splits a straight segment without turning it into curves', () => {
     const view = editor()
     const id = view.history.model.segments[0].id
     view.history.commit(interaction.editTrackSegment(view.history.model, id, 'straight'))
-    view.tool = 'insert'
+    view.tool = 'draw'
     view.pointerDown(pointer(300, 100))
     assert.equal(view.history.model.points.length, 4)
     assert.deepEqual(view.history.model.segments.slice(0, 2).map(segment => segment.shape), ['straight', 'straight'])
@@ -285,4 +285,100 @@ test('Fit track includes the widest assigned style with shoulders and outline', 
         assert.ok(view.camera.x + view.camera.width >= point.x + padding - 1e-9)
         assert.ok(view.camera.y + view.camera.height >= point.y + padding - 1e-9)
     }
+})
+
+test('new tracks remain open while Add point extends outside the road', () => {
+    assert.equal(model.createBlueprint().settings.closed, false)
+    const view = editor()
+    view.tool = 'draw'
+    view.pointerDown(pointer(800, 600))
+    const next = view.history.model
+    assert.equal(next.settings.closed, false)
+    assert.deepEqual(next.points.at(-1), { id: next.points.at(-1).id, x: 800, y: 600 })
+    assert.equal(next.segments.length, 3)
+    assert.equal(next.segments.at(-1).to, next.points.at(-1).id)
+    assert.doesNotMatch(geometry.trackPath(next), / Z$/)
+    assert.equal(view.history.past.length, 1)
+    view.undo()
+    assert.equal(view.history.model.points.length, 3)
+})
+
+test('Add point picks the visible wide road, not a fixed screen-distance threshold', () => {
+    const view = editor()
+    view.tool = 'draw'
+    view.history.model.rendering.roadWidth = 200
+    view.history.model.segments[0].shape = 'straight'
+    view.pointerDown(pointer(300, 180))
+    assert.equal(view.history.model.points.length, 4)
+    assert.equal(view.history.model.points[1].x, 300)
+    assert.equal(view.history.model.points[1].y, 100)
+    assert.deepEqual(view.history.model.segments.slice(0, 2).map(segment => segment.shape), ['straight', 'straight'])
+})
+
+test('connecting and reopening ends is undoable and preserves existing segment records', () => {
+    const view = editor()
+    const before = structuredClone(view.history.model)
+    view.toggleLoop()
+    assert.equal(view.history.model.settings.closed, true)
+    assert.equal(view.history.model.segments.length, 3)
+    assert.deepEqual(view.history.model.segments.slice(0, 2), before.segments)
+    assert.equal(view.history.model.segments.at(-1).from, 'c')
+    assert.equal(view.history.model.segments.at(-1).to, 'a')
+    assert.match(geometry.trackPath(view.history.model), / Z$/)
+    const loop = structuredClone(view.history.model)
+    view.toggleLoop()
+    assert.deepEqual(view.history.model, before)
+    view.undo()
+    assert.deepEqual(view.history.model, loop)
+    view.undo()
+    assert.deepEqual(view.history.model, before)
+    view.redo()
+    assert.deepEqual(view.history.model, loop)
+})
+
+test('Add point connects opposite endpoints without duplicating a point', () => {
+    for (const [selected, clicked] of [['c', 'a'], ['a', 'c']]) {
+        const view = editor()
+        view.tool = 'draw'
+        view.selected = new Set([selected])
+        const point = view.history.model.points.find(point => point.id === clicked)
+        view.pointerDown(pointer(point.x, point.y, { 'data-id': clicked }))
+        assert.equal(view.history.model.settings.closed, true)
+        assert.equal(view.history.model.points.length, 3)
+        assert.equal(view.history.past.length, 1)
+        assert.equal(view.drag, null)
+    }
+})
+
+test('loop action refuses incomplete tracks and edits during preview or file operations', () => {
+    for (const state of ['short', 'preview', 'busy']) {
+        const view = editor()
+        if (state === 'short') {
+            view.history.model.points.pop()
+            model.syncTrackSegments(view.history.model)
+        } else view[state] = true
+        const before = structuredClone(view.history.model)
+        view.toggleLoop()
+        assert.deepEqual(view.history.model, before)
+        assert.equal(view.history.past.length, 0)
+    }
+})
+
+test('Space + left-drag pans without editing or changing the active tool', () => {
+    const view = editor()
+    view.tool = 'draw'
+    view.camera = { x: 0, y: 0, width: 1200, height: 800 }
+    const before = structuredClone(view.history.model)
+    view.keyDown({ key: ' ', preventDefault() {} })
+    view.pointerDown(pointer(100, 100))
+    assert.equal(view.drag.kind, 'pan')
+    view.pointerMove(pointer(150, 170))
+    assert.deepEqual({ ...view.camera }, { x: -50, y: -70, width: 1200, height: 800 })
+    view.keyUp({ key: ' ', preventDefault() {} })
+    assert.equal(view.drag, null)
+    assert.equal(view.tool, 'draw')
+    assert.deepEqual(view.history.model, before)
+    assert.equal(view.history.past.length, 0)
+    assert.throws(() => view.setTool('pan'), /Unknown track tool/)
+    assert.throws(() => view.setTool('insert'), /Unknown track tool/)
 })

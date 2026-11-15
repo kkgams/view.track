@@ -45,7 +45,7 @@ their entries from the existing `view.files-1.0.0.zip` release. The editor uses
 the Host's `/util/view-plugin.js`. Optional `data-source` selects an initial SVG.
 Host-dispatched open, save, saveAs, undo, redo, deleteSelected, clearSelection,
 zoomIn, zoomOut and zoomFit actions share the toolbar's operation guard. The
-standard tool_1 through tool_4 actions select Draw, Select, Insert and Pan.
+standard tool_1 and tool_2 actions select Add point and Select.
 
 ## Sketch a circuit
 
@@ -53,17 +53,18 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 
 | Control | Action |
 | --- | --- |
-| Draw points (D), click empty canvas | Append a point |
+| Add point (D), click outside the road | Extend the route from its last point |
+| Add point (D), click on a road segment | Insert between its endpoints, including the closing segment |
+| Add point (D), select one end then click the opposite end | Connect the first and last points into a loop |
 | Select (V), click a point | Select it without creating points |
 | Select (V), click near a road segment | Select that segment and show its shape and curve handles |
 | Select points, drag empty space | Box-select points in either direction; Shift adds to the selection |
 | Shift-click a point | Add or remove it from the selection |
 | Drag a selected point | Move the whole selection together; one undo step per drag |
 | Delete selected points | Remove the selected points together |
-| Insert point (I), click near a segment | Insert between its endpoints, including the closing segment |
-| Pan (H), drag | Move the view without editing points |
+| Hold Space + left-drag | Pan without switching tools |
 | Zoom in / Fit track / Zoom out | Change the view scale or fit the full track and its road stroke |
-| Closed loop | Choose a closed circuit or open route |
+| Connect ends / Open track | Add or remove the last-to-first connection (connecting requires at least three points) |
 | Segment → Shape | Set the selected segment to Straight or Curved |
 | Road styles table → Add road style / select row | Create or select a named road style |
 | Style properties → Name / Road color / Road width | Edit the selected style, including tapered width |
@@ -72,7 +73,6 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 | Reset curve handles | Restore the selected segment’s automatic curve |
 | Show grid / Snap to grid / Grid size | Configure the grid independently of curve generation |
 | Undo / Redo | Restore edits, settings and opened documents; keeps the latest 100 edits |
-| Clear | Remove points and annotations; undo restores them |
 | Preview | Hide the grid and points, and disable shape editing |
 | Save / Save as | Write an editable SVG through GAMS filesystem APIs |
 | Open SVG | Reopen an SVG saved by this editor using the GAMS file chooser |
@@ -82,7 +82,13 @@ The header uses Host Material Symbol buttons, grouped as file actions, point
 tools, edit history and view controls. The active tool is highlighted and has
 `aria-pressed="true"`; hover tips identify each icon.
 
-With the SVG focused, D/V/I/H switches tools, Ctrl/Cmd+A selects all points,
+New tracks are open-ended. Add points in route order, then use **Connect ends**
+or click the first point while the last point is selected in Add point mode to
+close the loop. **Open track** removes the closing connection without removing
+points. Both actions are undoable; existing saved loops still open as loops.
+To remove all points, select all and delete.
+
+With the SVG focused, D/V switches tools, Ctrl/Cmd+A selects all points,
 Delete/Backspace deletes the selection, Ctrl/Cmd+Z undoes,
 Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redoes, and Ctrl/Cmd+S saves. Escape cancels an
 active drag or clears the selection. Settings and the track name are undoable.
@@ -110,7 +116,7 @@ With fewer than three points, a closed route is displayed as an open segment.
 
 ## Edit a segment
 
-Use **Select (V)** and click within 20 screen pixels of a segment, or choose it
+Use **Select (V)** and click on the visible road (with a six-screen-pixel picking margin), or choose it
 from **Selected segment** in the inspector. Point handles take precedence when
 clicking near an endpoint; the inspector can select any segment, including
 coincident or overlapping segments. A selected segment is highlighted.
@@ -135,7 +141,7 @@ renaming it keeps its assignments intact because references use stable IDs.
 definitions copy the current track-wide color and width, then keep their own
 values. New connections use Track default; styles are assigned explicitly. The **Used** column counts assigned
 segments. Delete is disabled while a style is in use: change its segments to
-Track default or another style first. Clearing the track preserves its style
+Track default or another style first. Deleting all points preserves the style
 definitions. Style creation, edits, assignment and deletion are undoable.
 
 Style colors and widths appear in **Styled road** mode in the editor, preview and saved SVG.

@@ -1,7 +1,8 @@
 # Track blueprint editor
 
 An SVG racing-circuit blueprint editor for [GAMS](https://github.com/kkgams/gams).
-Draw and move points; select straight or curved segments, edit and reset curve
+Build open routes or connect their ends into loops. Add points on the road to
+insert or outside it to extend; move points, select straight or curved segments, edit and reset curve
 handles; assign shared road colors and smoothly tapered widths to segments; configure road appearance, grid and snapping;
 save editable SVGs with undo/redo and a clean preview.
 
