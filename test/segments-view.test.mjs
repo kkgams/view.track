@@ -520,8 +520,10 @@ test('selecting an earlier road resumes it without changing the newer road', () 
     const view = editor()
     const second = structuredClone(drawSecondRoad(view))
     const segmentsBefore = structuredClone(view.history.model.segments.slice(2))
+    view.setTool('select')
     view.pointerDown(pointer(500, 500, { 'data-id': 'c' }))
     view.pointerUp(pointer(500, 500, { 'data-id': 'c' }))
+    view.setTool('draw')
     view.pointerDown(pointer(200, 700))
     const added = [...view.selected][0]
     assert.deepEqual(view.history.model.roads[0].pointIds, ['a', 'b', 'c', added])
@@ -720,6 +722,66 @@ test('endpoint merging lands on the exact target even when grid snapping is enab
     view.pointerUp(pointer(801, 601))
     assert.equal(view.history.model.roads.length, 1)
     assert.deepEqual(view.history.model.points.find(point => point.id === target.id), target)
+})
+
+test('clicking another road endpoint in Add point merges in one undo step for every orientation', () => {
+    for (const sourceId of ['a', 'c']) for (const targetEnd of [0, 2]) {
+        const view = editor()
+        const second = drawSecondRoad(view)
+        const targetId = second.pointIds[targetEnd]
+        view.selected = new Set([sourceId])
+        const before = structuredClone(view.history.model)
+        const expected = interaction.mergeTrackEndpoints(before, sourceId, targetId)
+        const steps = view.history.past.length
+        const target = before.points.find(point => point.id === targetId)
+        view.pointerDown(pointer(target.x, target.y, { 'data-id': targetId }))
+        assert.deepEqual(view.history.model, expected)
+        assert.deepEqual([...view.selected], [targetId])
+        assert.equal(view.selectedSegment, null)
+        assert.equal(view.drag, null)
+        assert.equal(view.history.past.length, steps + 1)
+        view.pointerUp(pointer(target.x, target.y))
+        assert.equal(view.history.past.length, steps + 1)
+        view.undo()
+        assert.deepEqual(view.history.model, before)
+        view.redo()
+        assert.deepEqual(view.history.model, expected)
+    }
+})
+
+test('endpoint clicks merge with the clicked point even when other endpoints overlap it', () => {
+    const view = editor()
+    const second = drawSecondRoad(view)
+    const first = view.history.model.points.find(point => point.id === second.pointIds[0])
+    const target = view.history.model.points.find(point => point.id === second.pointIds[2])
+    target.x = first.x
+    target.y = first.y
+    view.selected = new Set(['c'])
+    const expected = interaction.mergeTrackEndpoints(view.history.model, 'c', target.id)
+    view.pointerDown(pointer(target.x, target.y, { 'data-id': target.id }))
+    assert.deepEqual(view.history.model, expected)
+    assert.deepEqual([...view.selected], [target.id])
+})
+
+test('endpoint clicking does not merge with Shift, Select, interior/loop points or ambiguous selections', () => {
+    for (const state of ['shift', 'select', 'source-interior', 'target-interior', 'source-loop', 'target-loop', 'multiple', 'none']) {
+        const view = editor()
+        const second = drawSecondRoad(view)
+        const sourceId = state === 'source-interior' ? 'b' : 'c'
+        const targetId = second.pointIds[state === 'target-interior' ? 1 : 0]
+        view.selected = new Set(state === 'none' ? [] : state === 'multiple' ? ['a', 'c'] : [sourceId])
+        if (state === 'select') view.tool = 'select'
+        if (state === 'source-loop') view.history.model.roads[0].closed = true
+        if (state === 'target-loop') view.history.model.roads[1].closed = true
+        model.syncTrackSegments(view.history.model)
+        const before = structuredClone(view.history.model)
+        const steps = view.history.past.length
+        const target = before.points.find(point => point.id === targetId)
+        view.pointerDown(pointer(target.x, target.y, { 'data-id': targetId }, { shiftKey: state === 'shift' }))
+        view.pointerUp(pointer(target.x, target.y))
+        assert.deepEqual(view.history.model, before)
+        assert.equal(view.history.past.length, steps)
+    }
 })
 
 test('group dragging never merges roads, even when an endpoint is over another endpoint', () => {

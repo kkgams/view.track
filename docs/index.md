@@ -58,6 +58,7 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 | Add point (D), select an interior or loop point then click empty space | Start a new disconnected road |
 | Add point (D), click on a road segment | Insert between its endpoints, including the closing segment |
 | Add point (D), select one end then click the opposite end | Connect the first and last points into a loop |
+| Add point (D), select an endpoint then click another road’s endpoint | Merge the two open roads, retaining the clicked point |
 | Select (V), click a point | Select it without creating points |
 | Select (V), click near a road segment | Select that segment and show its shape and curve handles |
 | Select points, drag empty space | Box-select points in either direction; Shift adds to the selection |
@@ -96,7 +97,7 @@ selected so subsequent clicks continue from its endpoint.
 Select exactly one endpoint to continue drawing; off-road clicks with multiple
 points selected do not add points. Clicking an existing road still splits the
 clicked segment even when nothing is selected. Roads remain independent at
-crossings; clicking another road’s endpoint selects it rather than joining roads.
+crossings; in Select mode, clicking another road’s endpoint only selects it.
 New off-road connections use automatic curves and the default road style;
 unaffected segment records are preserved.
 
@@ -111,7 +112,9 @@ point removes its road. **Delete selected points**, unlike Split, reconnects
 surviving neighbors within each road.
 
 To join two roads, drag one endpoint onto an endpoint of a different open road
-and release. A highlighted ring marks the merge target. The roads orient
+and release, or select an endpoint in **Add point (D)** mode and click the other
+road’s endpoint. Shift-click only changes selection and never joins roads.
+A highlighted ring marks the merge target during dragging. The roads orient
 themselves to form one route, keeping the destination point’s ID and exact
 position and the destination road’s ID and metadata; the dragged point and its
 road record are removed. Interior points, loop points and multi-point group

@@ -621,6 +621,16 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
             } else if (id) {
                 const road = model.roads.find(road => road.pointIds.includes(id))
                 if (!road) throw new Error('Point has no road')
+                if (this.tool === 'draw' && !event.shiftKey && this.selected.size === 1) {
+                    const sourceId = [...this.selected][0]
+                    if (canMergeTrackEndpoints(model, sourceId, id)) {
+                        this.history.commit(mergeTrackEndpoints(model, sourceId, id))
+                        this.selected = new Set([id])
+                        this.selectedSegment = null
+                        this.render()
+                        return
+                    }
+                }
                 const first = road.pointIds[0], last = road.pointIds.at(-1)
                 if (this.tool === 'draw' && !event.shiftKey && !road.closed && road.pointIds.length >= 3 && this.selected.size === 1 &&
                     ((id === first && this.selected.has(last)) || (id === last && this.selected.has(first)))) {

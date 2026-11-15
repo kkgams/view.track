@@ -181,10 +181,15 @@ function reverseTrackRoad(model, road) {
     }
 }
 
+export function canMergeTrackEndpoints(model, sourceId, targetId) {
+    const source = trackPointRoad(model.roads, sourceId), target = trackPointRoad(model.roads, targetId)
+    return source !== target && isTrackEndpoint(source, sourceId) && isTrackEndpoint(target, targetId)
+}
+
 export function mergeTrackEndpoints(model, sourceId, targetId) {
     const next = validateBlueprint(model)
     const source = trackPointRoad(next.roads, sourceId), target = trackPointRoad(next.roads, targetId)
-    if (source === target || !isTrackEndpoint(source, sourceId) || !isTrackEndpoint(target, targetId)) {
+    if (!canMergeTrackEndpoints(next, sourceId, targetId)) {
         throw new Error('Merge requires endpoints of different open roads')
     }
     if (source.pointIds.at(-1) !== sourceId) reverseTrackRoad(next, source)
