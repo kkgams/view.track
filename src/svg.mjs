@@ -1,4 +1,4 @@
-import { validateBlueprint } from './model.mjs'
+import { validateBlueprint, trackRoads } from './model.mjs'
 import { trackPath, trackSegments, segmentPath, trackRoadWidths, trackRoadMesh, roadSurfacePath } from './geometry.mjs'
 
 export const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -16,7 +16,10 @@ export function renderTrack(model, id = 'track-centerline', simpleColor = '#263b
     // Keep the exact centerline for markings; vary only the generated road surface.
     const styles = new Map(model.styles.map(style => [style.id, style]))
     const colored = style.mode === 'road' ? trackSegments(model).filter(segment => model.segments[segment.index].styleId !== null) : []
-    const closed = model.settings.closed && model.points.length > 2
+    const capsByIndex = trackRoads(model).flatMap(road => {
+        const closed = road.closed && road.points.length > 2
+        return road.segments.map((segment, index) => ({ start: !closed && index === 0, end: !closed && index === road.segments.length - 1 }))
+    })
     const varying = style.mode === 'road' && profiles.some(profile => profile.width !== roadWidth)
     const meshes = varying ? trackRoadMesh(model, profiles) : []
     const overrides = colored.map(segment => {
@@ -24,13 +27,14 @@ export function renderTrack(model, id = 'track-centerline', simpleColor = '#263b
         if (!roadStyle) throw new Error('Missing road style')
         const color = roadStyle.roadColor
         if (varying) {
-            const caps = { start: !closed && segment.index === 0, end: !closed && segment.index === model.segments.length - 1 }
+            const caps = capsByIndex[segment.index]
             return `<path d="${roadSurfacePath(meshes[segment.index], 0, caps)}" fill="${color}"/>`
         }
         let markup = `<path d="${segmentPath(segment)}" stroke="${color}" stroke-width="${roadWidth}" stroke-linecap="butt"/>`
         // Internal color boundaries are flat; only open-route ends need round caps.
-        if (!closed) {
-            for (const point of [...(segment.index === 0 ? [segment.a] : []), ...(segment.index === model.segments.length - 1 ? [segment.b] : [])]) {
+        const caps = capsByIndex[segment.index]
+        if (caps.start || caps.end) {
+            for (const point of [...(caps.start ? [segment.a] : []), ...(caps.end ? [segment.b] : [])]) {
                 markup += `<circle cx="${point.x}" cy="${point.y}" r="${roadWidth / 2}" fill="${color}" stroke="none"/>`
             }
         }

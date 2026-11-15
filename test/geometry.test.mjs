@@ -5,9 +5,10 @@ import { trackSegments, segmentPoint, trackPath, nearestSegment } from '../src/g
 
 function blueprint(coordinates, settings = {}) {
     const value = createBlueprint()
-    const { shape = 'curve', ...routeSettings } = settings
-    value.settings = { ...value.settings, closed: true, ...routeSettings }
+    const { shape = 'curve', closed = true, ...routeSettings } = settings
+    value.settings = { ...value.settings, ...routeSettings }
     value.points = coordinates.map(([x, y], index) => ({ id: String(index), x, y }))
+    value.roads = value.points.length ? [{ id: 'road-1', closed, pointIds: value.points.map(point => point.id) }] : []
     syncTrackSegments(value)
     value.segments.forEach(segment => { segment.shape = shape })
     return value
@@ -66,7 +67,7 @@ test('straight paths use lines, close only when requested, and preserve point or
     const first = trackSegments(value)[0]
     assert.deepEqual(first.c, first.a)
     assert.deepEqual(first.d, first.b)
-    value.settings.closed = false
+    value.roads[0].closed = false
     syncTrackSegments(value)
     assert.equal(trackPath(value), 'M 0 0 L 100 0 L 100 100')
 })
@@ -119,6 +120,7 @@ test('closing-edge insertion appends between last and first, snaps, and remains 
     near(hit.y, 100)
     const next = structuredClone(history.model)
     next.points.splice(hit.index + 1, 0, { id: 'inserted', ...placePoint(next, hit.x, hit.y) })
+    next.roads[0].pointIds.splice(hit.index + 1, 0, 'inserted')
     syncTrackSegments(next)
     assert.equal(history.commit(next), true)
     assert.deepEqual(history.model.points.map(point => point.id), ['0', '1', '2', 'inserted'])
@@ -128,7 +130,7 @@ test('closing-edge insertion appends between last and first, snaps, and remains 
     assert.deepEqual(history.model, value)
     history.redo()
     assert.equal(history.model.points.length, 4)
-    value.settings.closed = false
+    value.roads[0].closed = false
     syncTrackSegments(value)
     assert.equal(nearestSegment(value, { x: 97, y: 103 }).index, 0)
 })

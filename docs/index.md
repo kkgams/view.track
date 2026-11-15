@@ -53,6 +53,7 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 
 | Control | Action |
 | --- | --- |
+| Add point (D), Escape then click empty space | Start a new disconnected road |
 | Add point (D), select a point then click outside the road | Add immediately after that point, before its next neighbor |
 | Add point (D), click on a road segment | Insert between its endpoints, including the closing segment |
 | Add point (D), select one end then click the opposite end | Connect the first and last points into a loop |
@@ -64,7 +65,7 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 | Delete selected points | Remove the selected points together |
 | Hold Space + left-drag | Pan without switching tools |
 | Zoom in / Fit track / Zoom out | Change the view scale or fit the full track and its road stroke |
-| Connect ends / Open track | Add or remove the last-to-first connection (connecting requires at least three points) |
+| Connect road ends / Open road | Add or remove the selected road’s last-to-first connection (connecting requires at least three points) |
 | Segment → Shape | Set the selected segment to Straight or Curved |
 | Road styles table → Add road style / select row | Create or select a named road style |
 | Style properties → Name / Road color / Road width | Edit the selected style, including tapered width |
@@ -82,19 +83,26 @@ The header uses Host Material Symbol buttons, grouped as file actions, point
 tools, edit history and view controls. The active tool is highlighted and has
 `aria-pressed="true"`; hover tips identify each icon.
 
-New tracks are open-ended. Select any point to draw from it: clicking outside
-the road inserts the new point immediately after the selected point in route
-order, for both open tracks and loops. The new point becomes selected so each
-following click continues from it. With no selection or multiple points selected,
-new points append at the end. Clicking on the road still splits the clicked
-segment, regardless of the selected point. New off-road connections use automatic
-curves and the default road style; unaffected segment records are preserved.
+A blueprint can contain multiple disconnected roads. With no points selected,
+clicking empty space starts a new open road. Press **Escape** to deselect before
+starting another road. The new point becomes selected, so subsequent clicks
+continue that road. Select any point in an existing road to resume drawing
+immediately after it in that road’s route order, for open roads and loops alike.
+Select exactly one point to continue drawing; off-road clicks with multiple
+points selected do not add points. Clicking an existing road still splits the
+clicked segment even when nothing is selected. Roads remain independent at
+crossings; clicking another road’s endpoint selects it rather than joining roads.
+New off-road connections use automatic curves and the default road style;
+unaffected segment records are preserved.
 
-Add points in route order, then use **Connect ends**
-or click the first point while the last point is selected in Add point mode to
-close the loop. **Open track** removes the closing connection without removing
-points. Both actions are undoable; existing saved loops still open as loops.
-To remove all points, select all and delete.
+Use **Connect road ends** or click the first point while the last point of the
+same road is selected in Add point mode to close that road. **Open road** removes
+only its closing connection without removing points. The toolbar uses the road
+containing the selected points or segment. With multiple roads and no selection,
+or a selection spanning roads, choose one road before connecting/opening it.
+A blueprint containing just one road needs no selection for this action.
+These actions are undoable; existing saved loops still open as loops. Deleting
+all points in a road removes that road. To remove every road, select all and delete.
 
 With the SVG focused, D/V switches tools, Ctrl/Cmd+A selects all points,
 Delete/Backspace deletes the selection, Ctrl/Cmd+Z undoes,
@@ -120,7 +128,7 @@ relative geometry. Point handles keep a constant on-screen size while zooming.
 The drawing area defaults to 1200 × 800 units. Grid sizes range from 5 to 200.
 Snapping rounds new and inserted points, curve handles, and selection movement;
 toggling it does not move existing geometry. Coincident points are permitted.
-With fewer than three points, a closed route is displayed as an open segment.
+With fewer than three points in a road, a closed road is displayed as an open segment.
 
 ## Edit a segment
 
@@ -240,23 +248,29 @@ not establish over/under ordering at crossings.
 
 The SVG contains one direct child `<metadata id="gams-track-blueprint">` whose
 text is JSON. The visible path is generated from that JSON, never parsed back
-into points. The format is `gams.track-blueprint`, schema version `1`.
+into points. The format is `gams.track-blueprint`, schema version `2`. Version-1 files are
+validated and upgraded to a single road on import; subsequent saves use version 2.
+Older editors that support only version 1 cannot reopen the new files.
 
 | Field | Meaning |
 | --- | --- |
 | `format`, `version` | Format identity and schema version; unsupported versions are rejected |
 | `name` | Track name or identifier |
 | `viewport` | Width and height in blueprint units |
-| `settings` | `closed`, `snap`, `grid`, `gridSize` |
-| `points` | Ordered `{id, x, y}` records; IDs remain stable when points move |
+| `settings` | `snap`, `grid`, `gridSize` |
+| `roads` | `{id, closed, pointIds}` records; `pointIds` defines each road’s route order |
+| `points` | `{id, x, y}` records shared by ID lookup; each point belongs to exactly one road |
 | `segments` | Ordered `{id, from, to, shape, handles, styleId}` records matching route connections |
 | `styles` | Shared `{id, name, roadColor, roadWidth}` definitions with unique IDs and names |
 | `annotations` | Reserved array for later design stages; empty in newly created V1 blueprints |
 | `rendering` | `mode`, `roadWidth`, `roadColor`, `edgeWidth`, `edgeColor`, `outlineWidth`, `outlineColor`, `centerlineVisible`, `centerlineColor`, `centerlineDash` |
 
-All listed fields are required. Segment IDs are unique; `from` and `to` reference
-the adjacent points in route order, including the closing connection for closed
-routes with at least three points. `shape` is `straight` or `curve`. `handles`
+All listed fields are required. Road IDs are unique and each road has a nonempty
+ordered list of unique point IDs; missing, repeated or shared point references
+are rejected. An empty blueprint has no roads. Segment IDs are unique; `from`
+and `to` reference adjacent points within a road, including its closing connection
+when closed with at least three points. Segment records follow road order and
+then connection order; there are no connections between roads. `shape` is `straight` or `curve`. `handles`
 is `null` for automatic curves or `{start: {x, y}, end: {x, y}}` for manual
 endpoint-relative offsets. Manual handles remain stored while a segment is straight. `styleId` is `null`
 for Track default, or the ID of a style in `styles`. Missing or dangling references
@@ -264,7 +278,7 @@ are invalid. Each style’s `roadColor` is a six-digit `#RRGGBB` value and
 `roadWidth` is a finite number from 1 to 200.
 Malformed metadata is rejected before replacing the document.
 
-Unknown JSON fields on the document, points, segments, styles and annotations survive save/load
+Unknown JSON fields on the document, roads, points, segments, styles and annotations survive save/load
 and undo/redo. Annotations are not interpreted or remapped when route topology changes.
 Elevation, bridges, tunnels and 3D handoff are not implemented.
 Files are limited to 8 MiB of SVG text and 10,000 points. Invalid data is rejected

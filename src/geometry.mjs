@@ -1,18 +1,22 @@
+import { trackRoads } from './model.mjs'
+
 export function trackSegments(model) {
-    const points = model.points
-    if (points.length < 2) return []
-    const closed = model.settings.closed && points.length > 2
-    const at = index => points[closed ? (index + points.length) % points.length : Math.max(0, Math.min(points.length - 1, index))]
-    return model.segments.map((segment, index) => {
-        const [p0, a, b, p3] = [at(index - 1), at(index), at(index + 1), at(index + 2)]
-        const curve = segment.shape === 'curve'
-        const c = !curve ? a : segment.handles === null ?
-            { x: a.x + (b.x - p0.x) / 6, y: a.y + (b.y - p0.y) / 6 } :
-            { x: a.x + segment.handles.start.x, y: a.y + segment.handles.start.y }
-        const d = !curve ? b : segment.handles === null ?
-            { x: b.x - (p3.x - a.x) / 6, y: b.y - (p3.y - a.y) / 6 } :
-            { x: b.x + segment.handles.end.x, y: b.y + segment.handles.end.y }
-        return { index, id: segment.id, shape: segment.shape, a, b, c, d }
+    let globalIndex = 0
+    return trackRoads(model).flatMap(road => {
+        const points = road.points
+        const closed = road.closed && points.length > 2
+        const at = index => points[closed ? (index + points.length) % points.length : Math.max(0, Math.min(points.length - 1, index))]
+        return road.segments.map((segment, index) => {
+            const [p0, a, b, p3] = [at(index - 1), at(index), at(index + 1), at(index + 2)]
+            const curve = segment.shape === 'curve'
+            const c = !curve ? a : segment.handles === null ?
+                { x: a.x + (b.x - p0.x) / 6, y: a.y + (b.y - p0.y) / 6 } :
+                { x: a.x + segment.handles.start.x, y: a.y + segment.handles.start.y }
+            const d = !curve ? b : segment.handles === null ?
+                { x: b.x - (p3.x - a.x) / 6, y: b.y - (p3.y - a.y) / 6 } :
+                { x: b.x + segment.handles.end.x, y: b.y + segment.handles.end.y }
+            return { index: globalIndex++, id: segment.id, shape: segment.shape, a, b, c, d }
+        })
     })
 }
 
@@ -35,9 +39,14 @@ export function segmentPath(segment) {
 }
 
 export function trackPath(model) {
-    if (!model.points.length) return ''
-    return `M ${trackCoordinates(model.points[0])}` + trackSegments(model).map(segment => ` ${segmentCommand(segment)}`).join('') +
-        (model.settings.closed && model.points.length > 2 ? ' Z' : '')
+    const segments = trackSegments(model)
+    let offset = 0
+    return trackRoads(model).map(road => {
+        const commands = segments.slice(offset, offset + road.segments.length)
+        offset += road.segments.length
+        return `M ${trackCoordinates(road.points[0])}` + commands.map(segment => ` ${segmentCommand(segment)}`).join('') +
+            (road.closed && road.points.length > 2 ? ' Z' : '')
+    }).join(' ')
 }
 
 // Sample only for picking; saved geometry always comes from the control points.
@@ -71,17 +80,19 @@ export function nearestSegment(model, point, parameter = false, roadTolerance = 
 
 export function trackRoadWidths(model) {
     const styles = new Map(model.styles.map(style => [style.id, style]))
-    const widths = model.segments.map(segment => {
-        if (segment.styleId === null) return model.rendering.roadWidth
-        const style = styles.get(segment.styleId)
-        if (!style) throw new Error('Missing road style')
-        return style.roadWidth
+    return trackRoads(model).flatMap(road => {
+        const widths = road.segments.map(segment => {
+            if (segment.styleId === null) return model.rendering.roadWidth
+            const style = styles.get(segment.styleId)
+            if (!style) throw new Error('Missing road style')
+            return style.roadWidth
+        })
+        const closed = road.closed && road.points.length > 2
+        return widths.map((width, index) => ({ width,
+            start: index === 0 && !closed ? width : (widths[(index + widths.length - 1) % widths.length] + width) / 2,
+            end: index === widths.length - 1 && !closed ? width : (width + widths[(index + 1) % widths.length]) / 2,
+        }))
     })
-    const closed = model.settings.closed && model.points.length > 2
-    return widths.map((width, index) => ({ width,
-        start: index === 0 && !closed ? width : (widths[(index + widths.length - 1) % widths.length] + width) / 2,
-        end: index === widths.length - 1 && !closed ? width : (width + widths[(index + 1) % widths.length]) / 2,
-    }))
 }
 
 // Width is measured along the centerline, not by the Bézier parameter. Both

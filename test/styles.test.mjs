@@ -6,8 +6,8 @@ import { renderTrack, exportBlueprint } from '../src/svg.mjs'
 
 function blueprint() {
     const model = createBlueprint()
-    model.settings.closed = true
     model.points = [{ id: 'a', x: 100, y: 100 }, { id: 'b', x: 500, y: 100 }, { id: 'c', x: 500, y: 500 }]
+    model.roads = [{ id: 'road-1', closed: true, pointIds: model.points.map(point => point.id) }]
     syncTrackSegments(model)
     model.styles = [{ id: 'asphalt', name: 'Asphalt', roadColor: '#123456', roadWidth: 24 }]
     return model

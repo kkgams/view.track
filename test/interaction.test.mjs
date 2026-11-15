@@ -14,6 +14,7 @@ function model() {
     value.viewport = { width: 300, height: 200 }
     value.settings.snap = false
     value.points = [{ id: 'a', x: 23, y: 77 }, { id: 'b', x: 87, y: 113 }, { id: 'c', x: 150, y: 80 }]
+    value.roads = [{ id: 'road-1', closed: false, pointIds: value.points.map(point => point.id) }]
     return syncTrackSegments(value)
 }
 function translation(value, ids, delta, dx, dy) {

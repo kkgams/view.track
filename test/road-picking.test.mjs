@@ -6,6 +6,7 @@ import { nearestSegment } from '../src/geometry.mjs'
 function road() {
     const model = createBlueprint()
     model.points = [{ id: 'a', x: 100, y: 200 }, { id: 'b', x: 500, y: 200 }, { id: 'c', x: 900, y: 200 }]
+    model.roads = [{ id: 'road-1', closed: false, pointIds: model.points.map(point => point.id) }]
     syncTrackSegments(model)
     for (const segment of model.segments) segment.shape = 'straight'
     model.rendering.edgeWidth = 0

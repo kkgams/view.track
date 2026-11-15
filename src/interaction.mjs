@@ -83,7 +83,12 @@ export function insertTrackPoint(model, index, point, t) {
     const source = trackSegments(model)[index]
     if (!source || !Number.isFinite(t) || t < 0 || t > 1) throw new Error('Invalid segment insertion')
     const next = structuredClone(model)
-    next.points.splice(index + 1, 0, structuredClone(point))
+    const road = next.roads.find(road => road.pointIds.includes(source.a.id))
+    if (!road) throw new Error('Segment has no road')
+    const roadIndex = road.pointIds.indexOf(source.a.id)
+    road.pointIds.splice(roadIndex + 1, 0, point.id)
+    const pointIndex = next.points.findIndex(point => point.id === source.a.id)
+    next.points.splice(pointIndex + 1, 0, structuredClone(point))
     syncTrackSegments(next)
     const left = next.segments[index], right = next.segments[index + 1]
     left.id = source.id
@@ -98,6 +103,30 @@ export function insertTrackPoint(model, index, point, t) {
         right.handles = { start: offset(rightStart, middle), end: offset(db, source.b) }
     }
     return next
+}
+
+// Off-road drawing changes route order; on-road insertion preserves curve geometry.
+export function addTrackPoint(model, point, afterId = null) {
+    const next = structuredClone(model)
+    if (afterId === null) {
+        next.points.push(structuredClone(point))
+        next.roads.push({ id: crypto.randomUUID(), closed: false, pointIds: [point.id] })
+    } else {
+        const road = next.roads.find(road => road.pointIds.includes(afterId))
+        const index = next.points.findIndex(point => point.id === afterId)
+        if (!road || index === -1) throw new Error('Missing drawing origin')
+        road.pointIds.splice(road.pointIds.indexOf(afterId) + 1, 0, point.id)
+        next.points.splice(index + 1, 0, structuredClone(point))
+    }
+    return syncTrackSegments(next)
+}
+
+export function deleteTrackPoints(model, ids) {
+    const next = structuredClone(model)
+    next.points = next.points.filter(point => !ids.has(point.id))
+    for (const road of next.roads) road.pointIds = road.pointIds.filter(id => !ids.has(id))
+    next.roads = next.roads.filter(road => road.pointIds.length)
+    return syncTrackSegments(next)
 }
 
 export function setTrackSegmentStyle(model, id, styleId) {

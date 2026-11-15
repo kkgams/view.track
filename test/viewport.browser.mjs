@@ -7,6 +7,7 @@ export function runViewportTests() {
     const check = (condition, message) => { if (!condition) throw new Error(message) }
     const model = createBlueprint()
     model.points = [{ id: 'a', x: 200, y: 200 }, { id: 'b', x: 900, y: 200 }, { id: 'c', x: 700, y: 600 }]
+    model.roads = [{ id: 'road-1', closed: false, pointIds: model.points.map(point => point.id) }]
     syncTrackSegments(model)
     const exported = exportBlueprint(model)
     const svg = document.createElementNS(SVG_NS, 'svg')

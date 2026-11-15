@@ -20,6 +20,7 @@ function editor() {
     const value = model.createBlueprint()
     value.settings.snap = false
     value.points = [{ id: 'a', x: 100, y: 100 }, { id: 'b', x: 500, y: 100 }, { id: 'c', x: 500, y: 500 }]
+    value.roads.push({ id: 'road-1', closed: false, pointIds: value.points.map(point => point.id) })
     model.syncTrackSegments(value)
     const view = Object.create(ViewTrack.prototype)
     Object.assign(view, {
@@ -288,12 +289,13 @@ test('Fit track includes the widest assigned style with shoulders and outline', 
 })
 
 test('new tracks remain open while Add point extends outside the road', () => {
-    assert.equal(model.createBlueprint().settings.closed, false)
+    assert.deepEqual(model.createBlueprint().roads, [])
     const view = editor()
     view.tool = 'draw'
+    view.selected = new Set(['c'])
     view.pointerDown(pointer(800, 600))
     const next = view.history.model
-    assert.equal(next.settings.closed, false)
+    assert.equal(next.roads[0].closed, false)
     assert.deepEqual(next.points.at(-1), { id: next.points.at(-1).id, x: 800, y: 600 })
     assert.equal(next.segments.length, 3)
     assert.equal(next.segments.at(-1).to, next.points.at(-1).id)
@@ -307,7 +309,7 @@ test('drawing from a selected point inserts after it and continues from each new
     for (const closed of [false, true]) {
         const view = editor()
         view.tool = 'draw'
-        view.history.model.settings.closed = closed
+        view.history.model.roads[0].closed = closed
         model.syncTrackSegments(view.history.model)
         const before = structuredClone(view.history.model)
         view.pointerDown(pointer(500, 100, { 'data-id': 'b' }))
@@ -323,7 +325,7 @@ test('drawing from a selected point inserts after it and continues from each new
         const second = view.history.model.points[3]
         assert.deepEqual(view.history.model.points.map(point => point.id), ['a', 'b', first.id, second.id, 'c'])
         assert.deepEqual([...view.selected], [second.id])
-        assert.equal(view.history.model.settings.closed, closed)
+        assert.equal(view.history.model.roads[0].closed, closed)
         assert.deepEqual(model.validateBlueprint(view.history.model), view.history.model)
         assert.deepEqual(view.history.model.segments[0], before.segments[0])
         const drawn = structuredClone(view.history.model)
@@ -348,13 +350,14 @@ test('drawing from the first point inserts before its successor; last point stil
     }
 })
 
-test('multiple selected points have no unique drawing origin and fall back to appending', () => {
+test('multiple selected points have no unique drawing origin and do not create off-road points', () => {
     const view = editor()
     view.tool = 'draw'
     view.selected = new Set(['a', 'b'])
+    const before = structuredClone(view.history.model)
     view.pointerDown(pointer(800, 600))
-    assert.deepEqual(view.history.model.points.slice(0, 3).map(point => point.id), ['a', 'b', 'c'])
-    assert.equal(view.history.model.points.at(-1).x, 800)
+    assert.deepEqual(view.history.model, before)
+    assert.equal(view.history.past.length, 0)
 })
 
 test('clicking the road splits the clicked segment regardless of the selected drawing origin', () => {
@@ -383,7 +386,7 @@ test('connecting and reopening ends is undoable and preserves existing segment r
     const view = editor()
     const before = structuredClone(view.history.model)
     view.toggleLoop()
-    assert.equal(view.history.model.settings.closed, true)
+    assert.equal(view.history.model.roads[0].closed, true)
     assert.equal(view.history.model.segments.length, 3)
     assert.deepEqual(view.history.model.segments.slice(0, 2), before.segments)
     assert.equal(view.history.model.segments.at(-1).from, 'c')
@@ -407,7 +410,7 @@ test('Add point connects opposite endpoints without duplicating a point', () => 
         view.selected = new Set([selected])
         const point = view.history.model.points.find(point => point.id === clicked)
         view.pointerDown(pointer(point.x, point.y, { 'data-id': clicked }))
-        assert.equal(view.history.model.settings.closed, true)
+        assert.equal(view.history.model.roads[0].closed, true)
         assert.equal(view.history.model.points.length, 3)
         assert.equal(view.history.past.length, 1)
         assert.equal(view.drag, null)
@@ -418,8 +421,7 @@ test('loop action refuses incomplete tracks and edits during preview or file ope
     for (const state of ['short', 'preview', 'busy']) {
         const view = editor()
         if (state === 'short') {
-            view.history.model.points.pop()
-            model.syncTrackSegments(view.history.model)
+            view.history.model = interaction.deleteTrackPoints(view.history.model, new Set(['c']))
         } else view[state] = true
         const before = structuredClone(view.history.model)
         view.toggleLoop()
@@ -445,4 +447,131 @@ test('Space + left-drag pans without editing or changing the active tool', () =>
     assert.equal(view.history.past.length, 0)
     assert.throws(() => view.setTool('pan'), /Unknown track tool/)
     assert.throws(() => view.setTool('insert'), /Unknown track tool/)
+})
+
+function drawSecondRoad(view) {
+    view.tool = 'draw'
+    view.keyDown({ key: 'Escape' })
+    view.pointerDown(pointer(800, 600))
+    view.pointerDown(pointer(1000, 700))
+    view.pointerDown(pointer(1100, 400))
+    return view.history.model.roads[1]
+}
+
+test('the first drawing click creates one open road and one selected point', () => {
+    const view = editor()
+    view.history = new model.TrackHistory(model.createBlueprint())
+    view.tool = 'draw'
+    view.pointerDown(pointer(200, 200))
+    const value = view.history.model
+    assert.equal(value.roads.length, 1)
+    assert.equal(value.points.length, 1)
+    assert.deepEqual(value.roads[0].pointIds, [value.points[0].id])
+    assert.equal(value.roads[0].closed, false)
+    assert.deepEqual(value.segments, [])
+    assert.deepEqual([...view.selected], [value.points[0].id])
+    assert.deepEqual(model.validateBlueprint(value), value)
+})
+
+test('deselecting starts a disconnected road and subsequent clicks continue only that road', () => {
+    const view = editor()
+    const before = structuredClone(view.history.model)
+    const geometryBefore = geometry.trackSegments(before)
+    const road = drawSecondRoad(view)
+    assert.equal(view.history.model.roads.length, 2)
+    assert.equal(road.closed, false)
+    assert.equal(road.pointIds.length, 3)
+    assert.deepEqual(view.history.model.roads[0], before.roads[0])
+    assert.deepEqual(view.history.model.segments.slice(0, 2), before.segments)
+    assert.deepEqual(geometry.trackSegments(view.history.model).slice(0, 2), geometryBefore)
+    assert.equal(view.history.model.segments.length, 4)
+    assert.deepEqual(view.history.model.segments.slice(2).map(segment => [segment.from, segment.to]),
+        [[road.pointIds[0], road.pointIds[1]], [road.pointIds[1], road.pointIds[2]]])
+    assert.deepEqual([...view.selected], [road.pointIds[2]])
+    const drawn = structuredClone(view.history.model)
+    for (let step = 0; step < 3; step++) view.undo()
+    assert.deepEqual(view.history.model, before)
+    for (let step = 0; step < 3; step++) view.redo()
+    assert.deepEqual(view.history.model, drawn)
+})
+
+test('selecting an earlier road resumes it without changing the newer road', () => {
+    const view = editor()
+    const second = structuredClone(drawSecondRoad(view))
+    const segmentsBefore = structuredClone(view.history.model.segments.slice(2))
+    view.pointerDown(pointer(500, 100, { 'data-id': 'b' }))
+    view.pointerUp(pointer(500, 100, { 'data-id': 'b' }))
+    view.pointerDown(pointer(200, 700))
+    const added = [...view.selected][0]
+    assert.deepEqual(view.history.model.roads[0].pointIds, ['a', 'b', added, 'c'])
+    assert.deepEqual(view.history.model.roads[1], second)
+    assert.deepEqual(view.history.model.segments.slice(3), segmentsBefore)
+})
+
+test('connect/open applies only to one selected road and never joins different roads', () => {
+    const view = editor()
+    const second = drawSecondRoad(view)
+    view.pointerDown(pointer(800, 600, { 'data-id': second.pointIds[0] }))
+    assert.equal(view.history.model.roads[1].closed, true)
+    assert.equal(view.history.model.roads[0].closed, false)
+    view.selected = new Set(['b'])
+    view.toggleLoop()
+    assert.equal(view.history.model.roads[0].closed, true)
+    assert.equal(view.history.model.roads[1].closed, true)
+    view.selected = new Set([second.pointIds[1]])
+    view.toggleLoop()
+    assert.equal(view.history.model.roads[1].closed, false)
+    assert.equal(view.history.model.roads[0].closed, true)
+    view.selected.clear()
+    const before = structuredClone(view.history.model)
+    view.toggleLoop()
+    assert.deepEqual(view.history.model, before)
+    view.selected = new Set(['a', second.pointIds[0]])
+    view.toggleLoop()
+    assert.deepEqual(view.history.model, before)
+    view.selected.clear()
+    view.selectedSegment = view.history.model.segments.at(-1).id
+    view.toggleLoop()
+    assert.equal(view.history.model.roads[1].closed, true)
+})
+
+test('deleting points removes empty roads without connecting their neighbors and is undoable', () => {
+    const view = editor()
+    const second = drawSecondRoad(view)
+    const before = structuredClone(view.history.model)
+    view.selected = new Set(second.pointIds)
+    view.deleteSelected()
+    assert.equal(view.history.model.roads.length, 1)
+    assert.deepEqual(view.history.model.roads[0], before.roads[0])
+    assert.deepEqual(view.history.model.segments, before.segments.slice(0, 2))
+    view.undo()
+    assert.deepEqual(view.history.model, before)
+    view.selected = new Set(view.history.model.points.map(point => point.id))
+    view.deleteSelected()
+    assert.deepEqual(view.history.model.roads, [])
+    assert.deepEqual(view.history.model.points, [])
+    assert.deepEqual(view.history.model.segments, [])
+})
+
+test('on-road insertion in a later road uses segment ownership, not its global index as a point index', () => {
+    const view = editor()
+    const second = drawSecondRoad(view)
+    const before = structuredClone(view.history.model)
+    const index = 2
+    const segment = geometry.trackSegments(before)[index]
+    const point = geometry.segmentPoint(segment, 0.5)
+    view.selected.clear()
+    view.pointerDown(pointer(point.x, point.y))
+    const added = [...view.selected][0]
+    assert.deepEqual(view.history.model.roads[1].pointIds, [second.pointIds[0], added, ...second.pointIds.slice(1)])
+    assert.deepEqual(view.history.model.roads[0], before.roads[0])
+    assert.deepEqual(view.history.model.segments.slice(0, 2), before.segments.slice(0, 2))
+    assert.equal(view.history.model.roads.length, 2)
+    assert.deepEqual(model.validateBlueprint(view.history.model), view.history.model)
+})
+
+test('point operations fail loudly for a missing drawing origin or segment', () => {
+    const value = editor().history.model
+    assert.throws(() => interaction.addTrackPoint(value, { id: 'new', x: 800, y: 600 }, 'missing'), /Missing drawing origin/)
+    assert.throws(() => interaction.insertTrackPoint(value, 100, { id: 'new', x: 300, y: 100 }, 0.5), /Invalid segment insertion/)
 })

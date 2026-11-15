@@ -26,19 +26,21 @@ export function validateRendering(rendering) {
 }
 
 export function createBlueprint() {
-    return { format: BLUEPRINT_FORMAT, version: 1, name: 'Untitled track',
+    return { format: BLUEPRINT_FORMAT, version: 2, name: 'Untitled track',
         viewport: { width: 1200, height: 800 },
-        settings: { closed: false, snap: true, grid: true, gridSize: 40 },
-        points: [], segments: [], styles: [], annotations: [], rendering: createRendering() }
+        settings: { snap: true, grid: true, gridSize: 40 },
+        roads: [], points: [], segments: [], styles: [], annotations: [], rendering: createRendering() }
 }
 
 export function validateBlueprint(value) {
     const fail = message => { throw new Error(`Invalid blueprint: ${message}`) }
     if (!value || value.format !== BLUEPRINT_FORMAT) fail('not an editor SVG')
-    if (value.version !== 1) fail(`unsupported schema version ${value.version}`)
+    if (![1, 2].includes(value.version)) fail(`unsupported schema version ${value.version}`)
+    if (value.version === 1 && Object.hasOwn(value, 'roads')) fail('legacy schema must not contain roads')
     if (typeof value.name !== 'string' || value.name.length > 1000) fail('name')
     if (!value.viewport || !['width', 'height'].every(key => Number.isFinite(value.viewport[key]) && value.viewport[key] >= 100 && value.viewport[key] <= 10000)) fail('viewport')
-    if (!value.settings || !['closed', 'snap', 'grid'].every(key => typeof value.settings[key] === 'boolean')) fail('settings')
+    if (!value.settings || !(value.version === 1 ? ['closed', 'snap', 'grid'] : ['snap', 'grid']).every(key => typeof value.settings[key] === 'boolean')) fail('settings')
+    if (value.version === 2 && Object.hasOwn(value.settings, 'closed')) fail('closed belongs to each road, not settings')
     if (!Number.isFinite(value.settings.gridSize) || value.settings.gridSize < 5 || value.settings.gridSize > 200) fail('grid size (5–200)')
     if (!Array.isArray(value.points) || value.points.length > 10000) fail('points (maximum 10000)')
     const ids = new Set()
@@ -61,7 +63,7 @@ export function validateBlueprint(value) {
         if (typeof style.roadColor !== 'string' || !/^#[0-9a-f]{6}$/i.test(style.roadColor)) fail('style road color (use #RRGGBB)')
     }
     if (!Array.isArray(value.segments)) fail('segments')
-    const pairs = trackPointPairs(value)
+    const pairs = value.version === 1 ? roadPointPairs(value.points, value.settings.closed) : trackPointPairs(value)
     if (value.segments.length !== pairs.length) fail('segment count must match the route')
     const segmentIds = new Set()
     value.segments.forEach((segment, index) => {
@@ -79,7 +81,14 @@ export function validateBlueprint(value) {
         }
     })
     validateRendering(value.rendering)
-    return structuredClone(value)
+    const checked = structuredClone(value)
+    if (checked.version === 1) {
+        const closed = checked.settings.closed
+        delete checked.settings.closed
+        checked.version = 2
+        checked.roads = checked.points.length ? [{ id: 'road-1', closed, pointIds: checked.points.map(point => point.id) }] : []
+    }
+    return checked
 }
 
 export class TrackHistory {
@@ -127,12 +136,57 @@ export function placePoint(model, x, y) {
     return { x: Math.max(0, Math.min(model.viewport.width, snap(x))), y: Math.max(0, Math.min(model.viewport.height, snap(y))) }
 }
 
-// Route order owns connectivity; segments own shape and endpoint-relative handles.
-export function trackPointPairs(model) {
-    const count = model.points.length
+function roadPointPairs(points, closed) {
+    const count = points.length
     if (count < 2) return []
-    const closed = model.settings.closed && count > 2
-    return Array.from({ length: closed ? count : count - 1 }, (_, index) => [model.points[index], model.points[(index + 1) % count]])
+    return Array.from({ length: closed && count > 2 ? count : count - 1 }, (_, index) => [points[index], points[(index + 1) % count]])
+}
+
+// Ownership is explicit, including while editing before segments are synchronized.
+function resolveTrackRoads(model) {
+    const fail = message => { throw new Error(`Invalid blueprint: ${message}`) }
+    if (!Array.isArray(model.roads) || model.roads.length > 10000) fail('roads (maximum 10000)')
+    const points = new Map()
+    for (const point of model.points) {
+        if (!point || typeof point.id !== 'string' || !point.id || points.has(point.id)) fail('point IDs must be unique')
+        points.set(point.id, point)
+    }
+    const ids = new Set(), owned = new Set()
+    const roads = model.roads.map(road => {
+        if (!road || typeof road.id !== 'string' || !road.id || ids.has(road.id)) fail('road IDs must be unique and nonempty')
+        ids.add(road.id)
+        if (typeof road.closed !== 'boolean') fail('road closed must be boolean')
+        if (!Array.isArray(road.pointIds) || !road.pointIds.length || road.pointIds.length > 10000) fail('road pointIds must be nonempty (maximum 10000)')
+        const resolved = road.pointIds.map(id => {
+            if (!points.has(id)) fail('road references a missing point')
+            if (owned.has(id)) fail('point membership must be unique')
+            owned.add(id)
+            return points.get(id)
+        })
+        return { ...road, points: resolved }
+    })
+    if (owned.size !== points.size) fail('every point must belong to exactly one road')
+    return roads
+}
+
+// Road order owns connectivity; segments own shape and endpoint-relative handles.
+export function trackPointPairs(model) {
+    return resolveTrackRoads(model).flatMap(road => roadPointPairs(road.points, road.closed))
+}
+
+export function trackRoads(model) {
+    let offset = 0
+    const roads = resolveTrackRoads(model).map(road => {
+        const pairs = roadPointPairs(road.points, road.closed)
+        const segments = pairs.map(([from, to]) => {
+            const segment = model.segments[offset++]
+            if (!segment || segment.from !== from.id || segment.to !== to.id) throw new Error('Invalid blueprint: segment endpoints must match route order')
+            return segment
+        })
+        return { ...road, segments }
+    })
+    if (offset !== model.segments.length) throw new Error('Invalid blueprint: segment count must match the route')
+    return roads
 }
 
 export function syncTrackSegments(model) {

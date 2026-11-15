@@ -20,8 +20,8 @@ test('XML escaping handles all five reserved characters and string conversion', 
 test('export emits standalone SVG with dimensions, title, metadata and generated geometry', () => {
     const value = createBlueprint()
     value.name = 'Track Ω 🏁'
-    value.settings.closed = true
     value.points = [{ id: 'a', x: 10, y: 20 }, { id: 'b', x: 90, y: 100 }, { id: 'c', x: 150, y: 30 }]
+    value.roads = [{ id: 'road-1', closed: true, pointIds: value.points.map(point => point.id) }]
     syncTrackSegments(value)
     const svg = exportBlueprint(value)
     assert.ok(svg.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n'))
@@ -31,6 +31,7 @@ test('export emits standalone SVG with dimensions, title, metadata and generated
     assert.equal((svg.match(/<metadata /g) || []).length, 1)
     assert.ok(svg.endsWith('</svg>\n'))
     assert.deepEqual(metadataJson(svg), value)
+    assert.equal(metadataJson(svg).version, 2)
 })
 test('export preserves extensions and annotations without embedding their markup', () => {
     const value = createBlueprint()
@@ -40,6 +41,7 @@ test('export preserves extensions and annotations without embedding their markup
     value.settings.extension = { data: attack }
     value.viewport.units = 'm'
     value.points = [{ id: attack, x: 1, y: 2, extension: { text: attack } }]
+    value.roads = [{ id: 'road-1', closed: false, pointIds: [attack] }]
     value.annotations = [{ text: attack }]
     const before = structuredClone(value)
     syncTrackSegments(value)
@@ -53,13 +55,14 @@ test('export geometry covers empty, single, open straight and closed curved trac
     const value = createBlueprint()
     assert.match(exportBlueprint(value), /<path d="" /)
     value.points = [{ id: 'a', x: 10, y: 20 }]
+    value.roads = [{ id: 'road-1', closed: false, pointIds: ['a'] }]
     assert.match(exportBlueprint(value), /<path d="M 10 20" /)
     value.points.push({ id: 'b', x: 30, y: 40 }, { id: 'c', x: 50, y: 20 })
-    value.settings.closed = false
+    value.roads[0].pointIds.push('b', 'c')
     syncTrackSegments(value)
     value.segments.forEach(segment => { segment.shape = 'straight' })
     assert.match(exportBlueprint(value), /<path d="M 10 20 L 30 40 L 50 20" /)
-    value.settings.closed = true
+    value.roads[0].closed = true
     syncTrackSegments(value)
     value.segments.forEach(segment => { segment.shape = 'curve' })
     assert.ok(exportBlueprint(value).includes(`<path d="${trackPath(value)}"`))
@@ -68,8 +71,14 @@ test('export geometry covers empty, single, open straight and closed curved trac
 test('export validates before interpolating dimensions, coordinates or metadata', () => {
     for (const mutate of [
         value => { value.viewport.width = '100" onload="alert(1)' },
-        value => { value.points = [{ id: 'p', x: '0"/><script/>', y: 0 }] },
-        value => { value.settings.closed = 'false' },
+        value => {
+            value.points = [{ id: 'p', x: '0"/><script/>', y: 0 }]
+            value.roads = [{ id: 'road-1', closed: false, pointIds: ['p'] }]
+        },
+        value => {
+            value.points = [{ id: 'p', x: 0, y: 0 }]
+            value.roads = [{ id: 'road-1', closed: 'false', pointIds: ['p'] }]
+        },
         value => { value.version = 999 },
     ]) {
         const value = createBlueprint()

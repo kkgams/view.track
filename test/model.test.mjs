@@ -5,20 +5,25 @@ import { BLUEPRINT_FORMAT, createBlueprint, validateBlueprint, TrackHistory, pla
 test('new blueprints have independent nested state and validate without aliasing', () => {
     const first = createBlueprint(), second = createBlueprint()
     assert.equal(first.format, BLUEPRINT_FORMAT)
-    assert.equal(first.version, 1)
+    assert.equal(first.version, 2)
+    assert.deepEqual(first.roads, [])
+    assert.equal(Object.hasOwn(first.settings, 'closed'), false)
     const checked = validateBlueprint(first)
     checked.settings.snap = false
     checked.points.push({ id: 'p', x: 1, y: 2 })
+    checked.roads.push({ id: 'road-1', closed: false, pointIds: ['p'] })
     first.annotations.push({ text: 'note' })
     assert.equal(first.settings.snap, true)
     assert.deepEqual(first.points, [])
+    assert.deepEqual(first.roads, [])
+    assert.deepEqual(second.roads, [])
     assert.deepEqual(second.annotations, [])
     assert.deepEqual(checked.annotations, [])
 })
 
 const invalid = [
     ['format', value => { value.format = 'svg' }],
-    ['version', value => { value.version = 2 }],
+    ['version', value => { value.version = 3 }],
     ['name type', value => { value.name = 42 }],
     ['name length', value => { value.name = 'x'.repeat(1001) }],
     ['missing viewport', value => { delete value.viewport }],
@@ -27,15 +32,37 @@ const invalid = [
     ['nonfinite viewport', value => { value.viewport.width = Infinity }],
     ['numeric string viewport', value => { value.viewport.width = '1200' }],
     ['missing settings', value => { delete value.settings }],
-    ...['closed', 'snap', 'grid'].map(key => [`nonboolean ${key}`, value => { value.settings[key] = 1 }]),
+    ['nonboolean closed', value => {
+        value.points = [{ id: 'p', x: 0, y: 0 }]
+        value.roads = [{ id: 'road-1', closed: 1, pointIds: ['p'] }]
+    }],
+    ...['snap', 'grid'].map(key => [`nonboolean ${key}`, value => { value.settings[key] = 1 }]),
     ...[4, 201, NaN, Infinity, '40'].map(size => [`grid size ${size}`, value => { value.settings.gridSize = size }]),
     ['points type', value => { value.points = {} }],
-    ['point limit', value => { value.points = Array.from({ length: 10001 }, (_, id) => ({ id: String(id), x: 0, y: 0 })) }],
-    ['null point', value => { value.points = [null] }],
-    ['empty ID', value => { value.points = [{ id: '', x: 0, y: 0 }] }],
-    ['numeric ID', value => { value.points = [{ id: 1, x: 0, y: 0 }] }],
-    ['duplicate ID', value => { value.points = [{ id: 'p', x: 0, y: 0 }, { id: 'p', x: 1, y: 1 }] }],
-    ...[NaN, Infinity, -Infinity, 100001, -100001, '0'].map(x => [`coordinate ${x}`, value => { value.points = [{ id: 'p', x, y: 0 }] }]),
+    ['point limit', value => {
+        value.points = Array.from({ length: 10001 }, (_, id) => ({ id: String(id), x: 0, y: 0 }))
+        value.roads = [{ id: 'road-1', closed: false, pointIds: value.points.map(point => point.id) }]
+    }],
+    ['null point', value => {
+        value.points = [null]
+        value.roads = [{ id: 'road-1', closed: false, pointIds: ['p'] }]
+    }],
+    ['empty ID', value => {
+        value.points = [{ id: '', x: 0, y: 0 }]
+        value.roads = [{ id: 'road-1', closed: false, pointIds: [''] }]
+    }],
+    ['numeric ID', value => {
+        value.points = [{ id: 1, x: 0, y: 0 }]
+        value.roads = [{ id: 'road-1', closed: false, pointIds: [1] }]
+    }],
+    ['duplicate ID', value => {
+        value.points = [{ id: 'p', x: 0, y: 0 }, { id: 'p', x: 1, y: 1 }]
+        value.roads = [{ id: 'road-1', closed: false, pointIds: ['p', 'p'] }]
+    }],
+    ...[NaN, Infinity, -Infinity, 100001, -100001, '0'].map(x => [`coordinate ${x}`, value => {
+        value.points = [{ id: 'p', x, y: 0 }]
+        value.roads = [{ id: 'road-1', closed: false, pointIds: ['p'] }]
+    }]),
     ['annotations type', value => { value.annotations = null }],
 ]
 for (const [name, mutate] of invalid) test(`validation rejects ${name}`, () => {
@@ -50,9 +77,9 @@ test('validation accepts documented numeric limits, fractional grid and coordina
     const value = createBlueprint()
     value.name = 'x'.repeat(1000)
     value.viewport = { width: 100, height: 10000 }
-    value.settings.closed = true
     value.settings.gridSize = 5
     value.points = Array.from({ length: 10000 }, (_, id) => ({ id: String(id), x: -100000, y: 100000 }))
+    value.roads = [{ id: 'road-1', closed: true, pointIds: value.points.map(point => point.id) }]
     syncTrackSegments(value)
     assert.deepEqual(validateBlueprint(value), value)
     value.settings.gridSize = 200
@@ -66,6 +93,7 @@ test('validation preserves JSON extension fields and annotations with deep isola
     value.viewport.units = 'metres'
     value.settings.extension = { revision: 2 }
     value.points = [{ id: 'p', x: 0, y: 0, extension: { speed: 3 } }]
+    value.roads = [{ id: 'road-1', closed: false, pointIds: ['p'] }]
     value.annotations = [{ kind: 'future', nested: { text: '<note>' } }]
     const checked = validateBlueprint(value)
     assert.deepEqual(checked, value)
@@ -98,6 +126,7 @@ test('history clones initial and committed inputs and preserves extension data a
     const next = structuredClone(history.model)
     next.name = 'Changed'
     next.points.push({ id: 'p', x: 2, y: 3, extension: { flag: true } })
+    next.roads.push({ id: 'road-1', closed: false, pointIds: ['p'] })
     next.annotations.push({ text: 'retained' })
     assert.equal(history.commit(next), true)
     next.points[0].extension.flag = false
@@ -118,7 +147,7 @@ test('history no-op preserves redo, changed commit discards it, and invalid comm
     assert.equal(history.commit(structuredClone(history.model)), false)
     assert.equal(history.future.length, 1)
     const snapshot = structuredClone(history)
-    assert.throws(() => history.commit({ ...history.model, version: 2 }), /Invalid blueprint:/)
+    assert.throws(() => history.commit({ ...history.model, version: 3 }), /Invalid blueprint:/)
     assert.deepEqual(structuredClone(history), snapshot)
     assert.equal(history.commit({ ...history.model, name: 'Branch' }), true)
     assert.equal(history.future.length, 0)

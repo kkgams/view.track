@@ -7,9 +7,9 @@ import { exportBlueprint } from '../src/svg.mjs'
 
 function blueprint() {
     const model = createBlueprint()
-    model.settings.closed = true
     model.settings.snap = false
     model.points = [{ id: 'a', x: 100, y: 100 }, { id: 'b', x: 400, y: 100 }, { id: 'c', x: 400, y: 400 }]
+    model.roads = [{ id: 'road-1', closed: true, pointIds: model.points.map(point => point.id) }]
     return syncTrackSegments(model)
 }
 
@@ -86,17 +86,20 @@ test('topology synchronization preserves unaffected segment IDs and authored han
     model = moveTrackHandle(model, model.segments[0].id, 'start', { x: 180, y: 250 })
     const kept = structuredClone(model.segments[0])
     model.points.splice(2, 0, { id: 'inserted', x: 500, y: 250 })
+    model.roads[0].pointIds.splice(2, 0, 'inserted')
     syncTrackSegments(model)
     assert.deepEqual(model.segments[0], kept)
     assert.equal(model.segments.length, 4)
     assert.deepEqual(validateBlueprint(model), model)
     model.points = model.points.filter(point => point.id !== 'inserted')
-    model.settings.closed = false
+    model.roads[0].pointIds = model.roads[0].pointIds.filter(id => id !== 'inserted')
+    model.roads[0].closed = false
     syncTrackSegments(model)
     assert.equal(model.segments.length, 2)
     assert.deepEqual(model.segments[0], kept)
     assert.deepEqual(validateBlueprint(model), model)
     model.points = []
+    model.roads = []
     syncTrackSegments(model)
     assert.deepEqual(model.segments, [])
 })

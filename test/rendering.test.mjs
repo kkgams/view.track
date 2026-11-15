@@ -6,8 +6,8 @@ import { renderTrack, exportBlueprint } from '../src/svg.mjs'
 
 function blueprint() {
     const model = createBlueprint()
-    model.settings.closed = true
     model.points = [{ id: 'a', x: 40, y: 80 }, { id: 'b', x: 300, y: 120 }, { id: 'c', x: 180, y: 360 }]
+    model.roads = [{ id: 'road-1', closed: true, pointIds: model.points.map(point => point.id) }]
     return syncTrackSegments(model)
 }
 
@@ -199,7 +199,7 @@ test('segment asphalt overrides sit above road paint but below continuous center
 
 test('open road overrides retain round outer caps without rounding internal color boundaries', () => {
     const model = blueprint()
-    model.settings.closed = false
+    model.roads[0].closed = false
     syncTrackSegments(model)
     colorSegment(model, 0, '#aa3300')
     colorSegment(model, 1, '#33aa00')

@@ -151,7 +151,7 @@ export class ViewTrack extends HTMLElement {
     mountControls() {
         const groups = [
             ['file-actions', [['open', 'Open SVG', 'folder_open'], ['save', 'Save', 'save'], ['saveAs', 'Save as', 'save_as'], ['download', 'Download SVG', 'download']]],
-            ['tool-actions', [['draw', 'Add point', 'add', 'D'], ['select', 'Select points or segments', 'select_all', 'V'], ['toggleLoop', 'Connect ends / Open track', 'link'], ['deleteSelected', 'Delete selected points', 'delete']]],
+            ['tool-actions', [['draw', 'Add point', 'add', 'D'], ['select', 'Select points or segments', 'select_all', 'V'], ['toggleLoop', 'Connect road ends / Open road', 'link'], ['deleteSelected', 'Delete selected points', 'delete']]],
             ['edit-actions', [['undo', 'Undo', 'undo'], ['redo', 'Redo', 'redo']]],
             ['view-actions', [['zoomIn', 'Zoom in', 'zoom_in'], ['zoomFit', 'Fit track', 'fit_screen'], ['zoomOut', 'Zoom out', 'zoom_out'], ['preview', 'Preview', 'visibility']]],
         ]
@@ -414,8 +414,21 @@ export class ViewTrack extends HTMLElement {
         this.resetHandles.disabled = this.busy || this.preview || !curved || record.handles === null
     }
 
+    activeRoad(model = this.history.model) {
+        const segment = model.segments.find(segment => segment.id === this.selectedSegment)
+        if (segment) {
+            const road = model.roads.find(road => road.pointIds.includes(segment.from))
+            if (!road) throw new Error('Segment has no road')
+            return road
+        }
+        const roads = model.roads.filter(road => road.pointIds.some(id => this.selected.has(id)))
+        if (roads.length === 1) return roads[0]
+        return roads.length === 0 && this.selected.size === 0 && model.roads.length === 1 ? model.roads[0] : null
+    }
+
     updateControls() {
         const model = this.drag && this.drag.kind === 'handle' ? this.drag.draft : this.history.model
+        const road = this.activeRoad(model)
         this.updateStyleControls(model)
         this.updateSegmentControls(model)
         for (const field of this.fields) {
@@ -430,13 +443,13 @@ export class ViewTrack extends HTMLElement {
         for (const group of this.controls) for (const button of group.querySelectorAll('button')) {
             const action = button.dataset.action
             button.disabled = this.busy || (this.preview && ['draw', 'select', 'toggleLoop', 'deleteSelected'].includes(action)) ||
-                (action === 'toggleLoop' && !model.settings.closed && model.points.length < 3) ||
+                (action === 'toggleLoop' && (!road || (!road.closed && road.pointIds.length < 3))) ||
                 (action === 'deleteSelected' && this.selected.size === 0) ||
                 (action === 'undo' && !this.history.past.length) || (action === 'redo' && !this.history.future.length)
             if (action === 'toggleLoop') {
-                button.setAttribute('aria-label', model.settings.closed ? 'Open track' : 'Connect ends')
-                button.setAttribute('aria-pressed', String(model.settings.closed))
-                button.querySelector('i').textContent = model.settings.closed ? 'link_off' : 'link'
+                button.setAttribute('aria-label', road && road.closed ? 'Open road' : 'Connect road ends')
+                button.setAttribute('aria-pressed', String(Boolean(road && road.closed)))
+                button.querySelector('i').textContent = road && road.closed ? 'link_off' : 'link'
             }
             if (['draw', 'select'].includes(action)) {
                 button.setAttribute('aria-pressed', String(action === this.tool))
@@ -523,9 +536,10 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         const model = this.drag && ['move', 'handle'].includes(this.drag.kind) ? this.drag.draft : this.history.model
         const camera = this.camera
         const dirty = JSON.stringify(this.history.model) !== this.saved
-        const hints = { draw: 'Click road to insert · Click outside to add after selected point · Click opposite end to connect · Space + drag to pan', select: 'Click a road segment to edit · Click points or drag a box to select · Space + drag to pan' }
+        const road = this.activeRoad(model)
+        const hints = { draw: 'Click road to insert · Click outside to add after selected point · Esc then click outside to start a new road · Space + drag to pan', select: 'Click a road segment to edit · Click points or drag a box to select · Space + drag to pan' }
         this.status.className = ''
-        this.status.textContent = `${dirty ? 'Unsaved · ' : ''}${this.path || 'New blueprint'} · ${model.settings.closed ? 'Loop' : 'Open track'} · ${model.points.length} points · ${this.selected.size} points selected${this.selectedSegment ? ` · Segment ${model.segments.findIndex(segment => segment.id === this.selectedSegment) + 1}` : ''} · ${Math.round(model.viewport.width / camera.width * 100)}% · ${this.preview ? 'Preview' : hints[this.tool]}`
+        this.status.textContent = `${dirty ? 'Unsaved · ' : ''}${this.path || 'New blueprint'} · ${model.roads.length} roads${road ? ` · Road ${model.roads.indexOf(road) + 1} (${road.closed ? 'loop' : 'open'})` : ''} · ${model.points.length} points · ${this.selected.size} points selected${this.selectedSegment ? ` · Segment ${model.segments.findIndex(segment => segment.id === this.selectedSegment) + 1}` : ''} · ${Math.round(model.viewport.width / camera.width * 100)}% · ${this.preview ? 'Preview' : hints[this.tool]}`
     }
 
     screenScale() {
@@ -606,9 +620,11 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
                 this.drag = { kind: 'handle', pointerId: event.pointerId, start: position, scale: this.screenScale(),
                     handle, segmentId: this.selectedSegment, draft: structuredClone(model), beforeSelection, beforeSegment, moved: false }
             } else if (id) {
-                const first = model.points[0], last = model.points.at(-1)
-                if (this.tool === 'draw' && !event.shiftKey && !model.settings.closed && model.points.length >= 3 && this.selected.size === 1 &&
-                    ((id === first.id && this.selected.has(last.id)) || (id === last.id && this.selected.has(first.id)))) {
+                const road = model.roads.find(road => road.pointIds.includes(id))
+                if (!road) throw new Error('Point has no road')
+                const first = road.pointIds[0], last = road.pointIds.at(-1)
+                if (this.tool === 'draw' && !event.shiftKey && !road.closed && road.pointIds.length >= 3 && this.selected.size === 1 &&
+                    ((id === first && this.selected.has(last)) || (id === last && this.selected.has(first)))) {
                     this.toggleLoop()
                     return
                 }
@@ -639,10 +655,9 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
                 const added = { id: crypto.randomUUID(), ...placePoint(model, point.x, point.y) }
                 if (hit) next = insertTrackPoint(model, hit.index, added, hit.t)
                 else {
-                    const selectedIndex = model.points.findIndex(point => this.selected.size === 1 && this.selected.has(point.id))
-                    const index = selectedIndex === -1 ? next.points.length : selectedIndex + 1
-                    next.points.splice(index, 0, added)
-                    syncTrackSegments(next)
+                    if (this.selected.size > 1) return
+                    const afterId = this.selected.size === 1 ? [...this.selected][0] : null
+                    next = addTrackPoint(model, added, afterId)
                 }
                 this.selectedSegment = null
                 this.selected = new Set([added.id])
@@ -752,19 +767,19 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
     deleteSelected() {
         if (this.preview) return
         this.cancelDrag()
-        const next = structuredClone(this.history.model)
-        next.points = next.points.filter(point => !this.selected.has(point.id))
-        syncTrackSegments(next)
-        this.history.commit(next)
+        this.history.commit(deleteTrackPoints(this.history.model, this.selected))
         this.selected.clear()
+        this.selectedSegment = null
         this.render()
     }
     toggleLoop() {
         if (this.busy || this.preview) return
         this.cancelDrag()
+        const active = this.activeRoad()
+        if (!active || (!active.closed && active.pointIds.length < 3)) return
         const next = structuredClone(this.history.model)
-        if (!next.settings.closed && next.points.length < 3) return
-        next.settings.closed = !next.settings.closed
+        const road = next.roads.find(road => road.id === active.id)
+        road.closed = !road.closed
         syncTrackSegments(next)
         this.history.commit(next)
         this.selectedSegment = null

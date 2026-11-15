@@ -7,9 +7,9 @@ import { renderTrack, exportBlueprint } from '../src/svg.mjs'
 
 function blueprint(closed = false) {
     const model = createBlueprint()
-    model.settings.closed = closed
     model.settings.snap = false
     model.points = [0, 300, 900, 1200].map((x, index) => ({ id: String(index), x, y: 300 }))
+    model.roads = [{ id: 'road-1', closed, pointIds: model.points.map(point => point.id) }]
     syncTrackSegments(model)
     model.segments.forEach(segment => { segment.shape = 'straight' })
     model.styles = [{ id: 'wide', name: 'Wide road', roadColor: '#aa5533', roadWidth: 80 }]
@@ -162,6 +162,7 @@ test('style width supports documented limits, copies track defaults, and shares 
 test('symmetric closed curves do not duplicate a sample at the arc-length midpoint', () => {
     const model = createBlueprint()
     model.points = [{ id: 'a', x: 200, y: 200 }, { id: 'b', x: 900, y: 200 }, { id: 'c', x: 900, y: 600 }, { id: 'd', x: 200, y: 600 }]
+    model.roads = [{ id: 'road-1', closed: true, pointIds: model.points.map(point => point.id) }]
     syncTrackSegments(model)
     model.styles = [{ id: 'wide', name: 'Wide', roadColor: '#aa5533', roadWidth: 120 }]
     model.segments[0].styleId = 'wide'
