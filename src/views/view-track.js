@@ -523,7 +523,7 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
         const model = this.drag && ['move', 'handle'].includes(this.drag.kind) ? this.drag.draft : this.history.model
         const camera = this.camera
         const dirty = JSON.stringify(this.history.model) !== this.saved
-        const hints = { draw: 'Click road to insert · Click outside to extend · Click opposite end to connect · Space + drag to pan', select: 'Click a road segment to edit · Click points or drag a box to select · Space + drag to pan' }
+        const hints = { draw: 'Click road to insert · Click outside to add after selected point · Click opposite end to connect · Space + drag to pan', select: 'Click a road segment to edit · Click points or drag a box to select · Space + drag to pan' }
         this.status.className = ''
         this.status.textContent = `${dirty ? 'Unsaved · ' : ''}${this.path || 'New blueprint'} · ${model.settings.closed ? 'Loop' : 'Open track'} · ${model.points.length} points · ${this.selected.size} points selected${this.selectedSegment ? ` · Segment ${model.segments.findIndex(segment => segment.id === this.selectedSegment) + 1}` : ''} · ${Math.round(model.viewport.width / camera.width * 100)}% · ${this.preview ? 'Preview' : hints[this.tool]}`
     }
@@ -638,7 +638,12 @@ ${renderTrack(model, this.centerlineId, this.preview ? '#263b50' : '#91e5ff')}
                 const point = hit ? segmentPoint(trackSegments(model)[hit.index], hit.t) : position
                 const added = { id: crypto.randomUUID(), ...placePoint(model, point.x, point.y) }
                 if (hit) next = insertTrackPoint(model, hit.index, added, hit.t)
-                else { next.points.push(added); syncTrackSegments(next) }
+                else {
+                    const selectedIndex = model.points.findIndex(point => this.selected.size === 1 && this.selected.has(point.id))
+                    const index = selectedIndex === -1 ? next.points.length : selectedIndex + 1
+                    next.points.splice(index, 0, added)
+                    syncTrackSegments(next)
+                }
                 this.selectedSegment = null
                 this.selected = new Set([added.id])
                 this.history.commit(next)

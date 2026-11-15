@@ -303,6 +303,70 @@ test('new tracks remain open while Add point extends outside the road', () => {
     assert.equal(view.history.model.points.length, 3)
 })
 
+test('drawing from a selected point inserts after it and continues from each new point', () => {
+    for (const closed of [false, true]) {
+        const view = editor()
+        view.tool = 'draw'
+        view.history.model.settings.closed = closed
+        model.syncTrackSegments(view.history.model)
+        const before = structuredClone(view.history.model)
+        view.pointerDown(pointer(500, 100, { 'data-id': 'b' }))
+        view.pointerUp(pointer(500, 100, { 'data-id': 'b' }))
+        assert.deepEqual([...view.selected], ['b'])
+        view.pointerDown(pointer(800, 600))
+        const first = view.history.model.points[2]
+        assert.equal(first.x, 800)
+        assert.equal(first.y, 600)
+        assert.deepEqual(view.history.model.points.map(point => point.id), ['a', 'b', first.id, 'c'])
+        assert.deepEqual([...view.selected], [first.id])
+        view.pointerDown(pointer(1000, 700))
+        const second = view.history.model.points[3]
+        assert.deepEqual(view.history.model.points.map(point => point.id), ['a', 'b', first.id, second.id, 'c'])
+        assert.deepEqual([...view.selected], [second.id])
+        assert.equal(view.history.model.settings.closed, closed)
+        assert.deepEqual(model.validateBlueprint(view.history.model), view.history.model)
+        assert.deepEqual(view.history.model.segments[0], before.segments[0])
+        const drawn = structuredClone(view.history.model)
+        view.undo()
+        view.undo()
+        assert.deepEqual(view.history.model, before)
+        view.redo()
+        view.redo()
+        assert.deepEqual(view.history.model, drawn)
+    }
+})
+
+test('drawing from the first point inserts before its successor; last point still appends', () => {
+    for (const selected of ['a', 'c']) {
+        const view = editor()
+        view.tool = 'draw'
+        view.selected = new Set([selected])
+        view.pointerDown(pointer(800, 600))
+        const ids = view.history.model.points.map(point => point.id)
+        const added = [...view.selected][0]
+        assert.deepEqual(ids, selected === 'a' ? ['a', added, 'b', 'c'] : ['a', 'b', 'c', added])
+    }
+})
+
+test('multiple selected points have no unique drawing origin and fall back to appending', () => {
+    const view = editor()
+    view.tool = 'draw'
+    view.selected = new Set(['a', 'b'])
+    view.pointerDown(pointer(800, 600))
+    assert.deepEqual(view.history.model.points.slice(0, 3).map(point => point.id), ['a', 'b', 'c'])
+    assert.equal(view.history.model.points.at(-1).x, 800)
+})
+
+test('clicking the road splits the clicked segment regardless of the selected drawing origin', () => {
+    const view = editor()
+    view.tool = 'draw'
+    view.selected = new Set(['c'])
+    view.history.model.segments[0].shape = 'straight'
+    view.pointerDown(pointer(300, 100))
+    assert.deepEqual(view.history.model.points.map(point => point.id), ['a', [...view.selected][0], 'b', 'c'])
+    assert.deepEqual(model.validateBlueprint(view.history.model), view.history.model)
+})
+
 test('Add point picks the visible wide road, not a fixed screen-distance threshold', () => {
     const view = editor()
     view.tool = 'draw'

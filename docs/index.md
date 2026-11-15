@@ -53,7 +53,7 @@ Run `make open` on macOS Apple Silicon to open the local Project.
 
 | Control | Action |
 | --- | --- |
-| Add point (D), click outside the road | Extend the route from its last point |
+| Add point (D), select a point then click outside the road | Add immediately after that point, before its next neighbor |
 | Add point (D), click on a road segment | Insert between its endpoints, including the closing segment |
 | Add point (D), select one end then click the opposite end | Connect the first and last points into a loop |
 | Select (V), click a point | Select it without creating points |
@@ -82,7 +82,15 @@ The header uses Host Material Symbol buttons, grouped as file actions, point
 tools, edit history and view controls. The active tool is highlighted and has
 `aria-pressed="true"`; hover tips identify each icon.
 
-New tracks are open-ended. Add points in route order, then use **Connect ends**
+New tracks are open-ended. Select any point to draw from it: clicking outside
+the road inserts the new point immediately after the selected point in route
+order, for both open tracks and loops. The new point becomes selected so each
+following click continues from it. With no selection or multiple points selected,
+new points append at the end. Clicking on the road still splits the clicked
+segment, regardless of the selected point. New off-road connections use automatic
+curves and the default road style; unaffected segment records are preserved.
+
+Add points in route order, then use **Connect ends**
 or click the first point while the last point is selected in Add point mode to
 close the loop. **Open track** removes the closing connection without removing
 points. Both actions are undoable; existing saved loops still open as loops.
