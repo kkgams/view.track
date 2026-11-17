@@ -25,11 +25,9 @@ packages or sibling checkouts are needed.
 | `make serve-docs DOCS_PORT=8083` | Independent wiki preview |
 | `make docs` | Build `build.nosync/docs/` |
 | `make validate-docs` | Validate the wiki |
-| `make clean` | Remove `build.nosync/` and identified managed Host/notices; refuse supplied unmarked tools |
+| `make clean` | Remove all of `build.nosync/`, `tools/` and `gams_modules/`, without ownership markers; refuse tracked files or symlinks in deletion paths before deleting anything. |
 
-Clean refuses unmarked supplied Host tools, tracked files and symlinks in deletion paths. Installed Units in
-`gams_modules/` and unrelated tools are preserved. Existing Host downloads are
-not updated implicitly; security checks are not bypassed. Accompanying Host
+Existing Host downloads are not updated implicitly; security checks are not bypassed. Accompanying Host
 notices remain under `tools/gams-release-notices/`.
 
 The ZIP contains the assembled View, README and Apache-2.0 license. Register

@@ -29,9 +29,9 @@ Silicon and uses canonical local source with pinned released supporting Units.
 | `make serve-docs DOCS_PORT=8083` | Preview the pinned wiki independently. |
 | `make docs` | Build `build.nosync/docs/`. |
 | `make validate-docs` | Validate documentation. |
-| `make clean` | Remove generated `build.nosync/` and identified managed Host/notices; refuse supplied unmarked tools, tracked files and symlinked deletion paths. |
+| `make clean` | Remove all of `build.nosync/`, `tools/` and `gams_modules/`, without ownership markers; refuse tracked files or symlinks in deletion paths before deleting anything. |
 
 First launch needs network access. Existing Host downloads are never updated
-implicitly and security checks remain intact. Installed Units in `gams_modules/`
-and unrelated tools are preserved. Keep authored content outside `build.nosync/`.
+implicitly and security checks remain intact. Keep authored content outside
+`build.nosync/`, `tools/` and `gams_modules/`.
 See [the wiki](docs/index.md) for editing controls, SVG format and installation.
