@@ -18,7 +18,7 @@ export function renderTrack(model, id = 'track-centerline', simpleColor = '#263b
     const colored = style.mode === 'road' ? trackSegments(model).filter(segment => model.segments[segment.index].styleId !== null) : []
     const capsByIndex = trackRoads(model).flatMap(road => {
         const closed = road.closed && road.points.length > 2
-        return road.segments.map((segment, index) => ({ start: !closed && index === 0, end: !closed && index === road.segments.length - 1 }))
+        return road.segments.map((_, index) => ({ start: !closed && index === 0, end: !closed && index === road.segments.length - 1 }))
     })
     const varying = style.mode === 'road' && profiles.some(profile => profile.width !== roadWidth)
     const meshes = varying ? trackRoadMesh(model, profiles) : []
