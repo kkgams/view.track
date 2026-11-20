@@ -6,6 +6,7 @@ status: reference
 # Track blueprint editor
 
 A point-based SVG sketchbook for racing circuits, running inside [GAMS](https://github.com/kkgams/gams).
+[Launch fresh Track demo](https://gams.z0.lv/app.html?showcase=https%3A%2F%2Fgithub.com%2Fkkgams%2Fshowcases%2Freleases%2Fdownload%2Fv0.3.0%2Ftrack.zip). Select and drag a control point on Sunset Circuit, then save the SVG.
 
 | Component | Source → ZIP entry | Screenshot | Original work |
 | --- | --- | --- | --- |
